@@ -1,0 +1,207 @@
+.profile-page{
+  background:#f3f4f6;
+  min-height:100vh;
+  padding:16px;
+}
+
+/* ===== CENTER PROFILE CARD ===== */
+.profile-center-card{
+  background:white;
+  border-radius:20px;
+  padding:20px;
+  text-align:center;
+  box-shadow:0 4px 12px rgba(0,0,0,.08);
+  margin-bottom:16px;
+}
+
+.profile-circle{
+  width:120px;
+  height:120px;
+  border-radius:50%;
+  margin:0 auto 10px;
+  border:3px solid #4f46e5;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+}
+
+.profile-img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+}
+
+.profile-name{
+  margin:8px 0;
+  font-size:20px;
+}
+
+/* EDIT BUTTON */
+.edit-btn{
+  margin-top:8px;
+  border:none;
+  padding:8px 14px;
+  border-radius:20px;
+  background:#eef2ff;
+  color:#4f46e5;
+  font-weight:600;
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  cursor:pointer;
+}
+
+/* ===== TASK CARDS ROW ===== */
+.task-row{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+  margin-bottom:16px;
+}
+
+.task-card{
+  background:white;
+  border-radius:16px;
+  padding:14px;
+  box-shadow:0 4px 12px rgba(0,0,0,.08);
+}
+
+.task-left{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+.task-icon{
+  width:40px;
+  height:40px;
+  border-radius:10px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  color:white;
+}
+
+/* ICON COLORS */
+.total-bg{ background:#4f46e5; }
+.pending-bg{ background:#f97316; }
+
+/* ===== PROFESSIONAL INFO CARD ===== */
+.info-card{
+  background:white;
+  border-radius:18px;
+  padding:16px;
+  box-shadow:0 4px 12px rgba(0,0,0,.08);
+  margin-bottom:16px;
+}
+
+.info-card h3{
+  margin:0 0 10px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.info-row{
+  display:flex;
+  justify-content:space-between;
+  padding:8px 0;
+  border-bottom:1px solid #e5e7eb;
+}
+
+/* ===== LOGOUT BUTTON ===== */
+.logout-btn{
+  width:100%;
+  padding:12px;
+  border:none;
+  border-radius:12px;
+  background:#fee2e2;
+  color:#b91c1c;
+  font-weight:600;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  gap:8px;
+}
+/* ===== MODAL POPUP ===== */
+.modal-overlay{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,0.5);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+
+.modal-box{
+  background:white;
+  width:90%;
+  max-width:420px;
+  padding:16px;
+  border-radius:16px;
+}
+
+.modal-box h3{
+  margin:0 0 10px;
+}
+
+.modal-box label{
+  display:block;
+  margin-top:8px;
+  font-size:12px;
+  color:#64748b;
+}
+
+.modal-box input{
+  width:100%;
+  padding:8px;
+  border-radius:8px;
+  border:1px solid #e5e7eb;
+  margin-top:4px;
+}
+
+.modal-actions{
+  display:flex;
+  gap:10px;
+  margin-top:12px;
+}
+
+.cancel-btn{
+  flex:1;
+  padding:10px;
+  border:none;
+  border-radius:10px;
+  background:#e5e7eb;
+}
+
+.save-btn{
+  flex:1;
+  padding:10px;
+  border:none;
+  border-radius:10px;
+  background:#4f46e5;
+  color:white;
+}
+.profile-circle{
+  position: relative;
+  cursor: pointer;
+}
+
+.profile-img{
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid #4f46e5;
+}
+
+.edit-badge{
+  position: absolute;
+  bottom: 5px;
+  right: 5px;
+  background: white;
+  border-radius: 50%;
+  padding: 6px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+}

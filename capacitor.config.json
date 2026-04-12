@@ -1,0 +1,8 @@
+{
+  "appId": "com.techio.employee",
+  "appName": "Employee App",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "http"
+  }
+}

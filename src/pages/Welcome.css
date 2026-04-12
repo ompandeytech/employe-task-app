@@ -1,0 +1,227 @@
+/* ===== FULL SCREEN DARK BACKGROUND ===== */
+.welcome-page {
+  width: 100vw;
+  height: 100vh;
+  background: #0B0F1A;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* subtle animated gradient overlay */
+.welcome-page::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    120deg,
+    rgba(47, 128, 255, 0.08),
+    rgba(255, 255, 255, 0.02),
+    rgba(47, 128, 255, 0.08)
+  );
+  background-size: 300% 100%;
+  animation: gradientMove 12s linear infinite;
+  opacity: 0.6;
+}
+
+@keyframes gradientMove {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 100% 50%; }
+}
+
+/* ===== CENTER CONTENT ===== */
+.center-box {
+  position: relative;
+  z-index: 2;
+  text-align: center;
+  width: 85%;
+  max-width: 340px;
+}
+
+/* Title */
+.app-title {
+  font-size: 36px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  color: #E6E9EF;
+  margin-bottom: 6px;
+}
+
+/* Subtitle */
+.app-subtitle {
+  font-size: 14px;
+  color: #A6B0C3;
+  margin-bottom: 28px;
+}
+
+/* ===== FLOATING CHECK ICON ===== */
+.floating-icon {
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.15);
+  margin: 0 auto 18px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  animation: floatUpDown 3s ease-in-out infinite;
+}
+
+.floating-icon::after {
+  content: "✓";
+  font-size: 40px;
+  color: #2F80FF;
+  font-weight: bold;
+}
+
+@keyframes floatUpDown {
+  0% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+  100% { transform: translateY(0); }
+}
+
+/* ===== GLOWING BACKGROUND DOTS ===== */
+.glow-dot {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: rgba(47, 128, 255, 0.7);
+  border-radius: 50%;
+  filter: blur(1px);
+  opacity: 0.5;
+  animation: drift 8s ease-in-out infinite, fade 6s ease-in-out infinite;
+}
+
+.dot-1 { top: 15%; left: 20%; animation-delay: 0s; }
+.dot-2 { top: 70%; left: 80%; animation-delay: 2s; }
+.dot-3 { top: 50%; left: 10%; animation-delay: 4s; }
+.dot-4 { top: 25%; left: 65%; animation-delay: 1s; }
+
+@keyframes drift {
+  0% { transform: translate(0,0); }
+  50% { transform: translate(20px, -10px); }
+  100% { transform: translate(0,0); }
+}
+
+@keyframes fade {
+  0% { opacity: 0.2; }
+  50% { opacity: 0.7; }
+  100% { opacity: 0.2; }
+}
+
+/* ===== BUTTON STACK (MOBILE) ===== */
+.button-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Primary button */
+.btn-primary {
+  padding: 12px;
+  border-radius: 12px;
+  background: #2F80FF;
+  color: white;
+  border: none;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.btn-primary:hover {
+  box-shadow: 0 0 12px rgba(47,128,255,0.6);
+}
+
+/* Secondary button */
+.btn-secondary {
+  padding: 12px;
+  border-radius: 12px;
+  background: transparent;
+  color: #2F80FF;
+  border: 1px solid #2F80FF;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+/* ===== LOGIN BOX ===== */
+.login-box {
+  position: relative;
+  z-index: 2;
+  width: 85%;
+  max-width: 340px;
+  text-align: center;
+}
+
+.login-title {
+  color: #E6E9EF;
+  margin-bottom: 16px;
+}
+
+/* Inputs */
+.modern-input {
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 10px;
+  border-radius: 12px;
+  border: none;
+  outline: none;
+  background: rgba(255,255,255,0.9);
+}
+
+/* Full width login button */
+.full-btn {
+  width: 100%;
+}
+
+/* ===== ANIMATIONS ===== */
+.fade-in {
+  animation: fadeIn 0.6s ease;
+}
+
+.slide-up {
+  animation: slideUp 0.5s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+/* ===== PIN INPUT STYLE ===== */
+.pin-input {
+  width: 160px;
+  margin: 12px auto;
+  padding: 12px;
+  letter-spacing: 14px;
+  text-align: center;
+  font-size: 22px;
+  border-radius: 14px;
+  border: none;
+  outline: none;
+  background: rgba(255,255,255,0.95);
+  display: block;
+}
+
+/* make login box centered */
+.login-box {
+  position: relative;
+  z-index: 2;
+  width: 85%;
+  max-width: 340px;
+  text-align: center;
+}
+
+/* button full width */
+.full-btn {
+  width: 100%;
+}

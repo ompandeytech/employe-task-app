@@ -1,0 +1,237 @@
+.punch-wrapper {
+  margin: 1rem 0;
+  padding: 1.25rem 0;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.punch-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem;
+}
+
+.punch-btn {
+  border: none;
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #fff;
+  background: #2563eb;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  width: min(360px, 90%);
+  min-height: 64px;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 1.1rem;
+  border-radius: 999px;
+}
+
+.punch-btn:disabled {
+  background: #94a3b8;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.punch-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px rgba(37, 99, 235, 0.3);
+}
+
+.punch-btn.secondary {
+  background: #475569;
+}
+
+.punch-btn.checkout {
+  background: #0d9488;
+}
+
+.punch-btn.checked-out {
+  background: #475569;
+  cursor: not-allowed;
+}
+
+.status {
+  margin: 0.6rem 0 0;
+  font-size: 0.95rem;
+}
+
+.status.success {
+  color: #059669;
+}
+
+.status.error {
+  color: #dc2626;
+}
+
+.status.info {
+  color: #0ea5e9;
+  font-weight: 600;
+}
+
+.camera-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+  padding: 1.25rem;
+  overflow-y: auto;
+}
+
+.camera-dialog {
+  width: min(480px, 100%);
+  background: #fff;
+  border-radius: 16px;
+  padding: 1.25rem 1.5rem 1.25rem;
+  box-shadow: 0 25px 45px rgba(15, 23, 42, 0.2);
+  text-align: center;
+  max-height: min(96vh, 820px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.camera-video {
+  width: 100%;
+  height: clamp(220px, 40vw, 320px);
+  border-radius: 12px;
+  border: 3px solid #e2e8f0;
+  background: #000;
+  object-fit: cover;
+  margin: 0.75rem 0;
+  transition: border-color 0.25s ease;
+}
+.camera-video.inside {
+  border-color: #059669;
+}
+.camera-video.outside {
+  border-color: #dc2626;
+}
+
+.camera-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  width: 100%;
+  align-items: stretch;
+}
+
+.camera-error {
+  margin: 0;
+  color: #b91c1c;
+  font-size: 0.9rem;
+}
+
+.camera-hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #475569;
+}
+.camera-warning {
+  margin: 0.4rem 0 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #dc2626;
+}
+.camera-switch-btn {
+  margin-top: 0;
+  padding: 12px;
+  width: 100%;
+  background: linear-gradient(135deg, #2563eb, #0ea5e9);
+  color: #fff;
+  border-radius: 12px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.35);
+}
+.camera-switch-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.report-box {
+  background: #fff;
+  padding: 1.5rem;
+  border-radius: 18px;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.12);
+  margin: 1.75rem 0;
+}
+
+.lunch-row {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.lunch-row > div {
+  flex: 1;
+  min-width: 220px;
+}
+
+.lunch-row label {
+  font-weight: 600;
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
+.lunch-row input[type="time"] {
+  width: 100%;
+  padding: 0.55rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid #cbd5f5;
+  background: #f9fafb;
+  font-size: 0.95rem;
+}
+
+.lunch-row button {
+  width: 100%;
+  margin-top: 0.4rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 12px;
+  border: none;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, #2563eb, #0ea5e9);
+  cursor: pointer;
+  box-shadow: 0 10px 18px rgba(37, 99, 235, 0.3);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.lunch-row button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 24px rgba(37, 99, 235, 0.35);
+}
+
+.lunch-row button:disabled {
+  background: #94a3b8;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+@media (max-width: 480px) {
+  .lunch-row {
+    flex-direction: column;
+  }
+
+  .lunch-row > div {
+    min-width: 100%;
+  }
+
+  .lunch-row button {
+    margin-top: 0.6rem;
+  }
+}
