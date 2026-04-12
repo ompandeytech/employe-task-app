@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNotificationContext } from './NotificationContext';
 import axios from 'axios';
 import { API_BASE, getAuthHeaders } from '../utils/apiConfig';
@@ -6,11 +6,17 @@ import { TaskContext } from './taskContextStore';
 
 const USE_FILTER_ENDPOINTS = import.meta.env.VITE_USE_TASK_FILTER_ENDPOINTS === 'true';
 const USE_UPDATE_STATUS_ENDPOINT = false;
+const PENDING_TASKS_KEY = 'pendingTasks';
 
 export const TaskProvider = ({ children }) => {
   const [taskState, setTaskState] = useState({ tasks: [], todayTasks: [] });
   const { tasks, todayTasks } = taskState;
+  const tasksRef = useRef(tasks);
   const { notifyTaskReassigned, notifyTaskCompleted } = useNotificationContext();
+
+  useEffect(() => {
+    tasksRef.current = tasks;
+  }, [tasks]);
 
   const getLoggedInUser = () => JSON.parse(localStorage.getItem('user') || '{}');
 
@@ -31,10 +37,10 @@ export const TaskProvider = ({ children }) => {
   const normalizeTask = (task) => {
     const createdAt = task.created_at || task.createdAt || task.updated_at || task.updatedAt || new Date().toISOString();
     const status = normalizeStatus(task.status);
-    const assignedTo = task.assignedTo ?? task.assigned_to ?? task.employee_name ?? task.employeeName ?? task.employee_id ?? task.employeeId ?? null;
+    const assignedTo = task.assigned_employee_names ?? task.assigned_employee_ids ?? task.assignedTo ?? task.assigned_to ?? task.employee_name ?? task.employeeName ?? task.employee_id ?? task.employeeId ?? null;
     const taskId = task.id ?? task.task_id ?? task.taskId;
     const reassignedTo = task.reassignedTo ?? task.reassigned_to ?? null;
-    const pendingReason = task.pendingReason ?? task.reason ?? null;
+    const pendingReason = task.pendingReason ?? task.pending_reason ?? task.reason ?? null;
     const reassignReason = task.reassignReason ?? task.reassign_reason ?? task.reason ?? null;
     const completedAt = task.completedAt ?? task.completed_at ?? (status === 'done' ? createdAt : null);
     const startedAt = task.startedAt ?? task.started_at ?? (status === 'in_progress' ? createdAt : null);
@@ -64,6 +70,32 @@ export const TaskProvider = ({ children }) => {
     if (Array.isArray(payload?.data)) return payload.data;
     if (Array.isArray(payload?.tasks)) return payload.tasks;
     return [];
+  };
+
+  const getLocalPendingTasks = () => {
+    try {
+      return JSON.parse(localStorage.getItem(PENDING_TASKS_KEY) || '[]');
+    } catch {
+      return [];
+    }
+  };
+
+  const saveLocalPendingTasks = (tasks) => {
+    try {
+      localStorage.setItem(PENDING_TASKS_KEY, JSON.stringify(tasks || []));
+    } catch (error) {
+      console.error('Failed to save pending tasks to localStorage', error);
+    }
+  };
+
+  const removeLocalPendingTask = (taskId) => {
+    try {
+      const stored = getLocalPendingTasks();
+      const filtered = stored.filter((task) => task.id !== taskId);
+      localStorage.setItem(PENDING_TASKS_KEY, JSON.stringify(filtered));
+    } catch (error) {
+      console.error('Failed to remove pending task from localStorage', error);
+    }
   };
 
   const isNotFound = (error) => error?.response?.status === 404;
@@ -130,13 +162,75 @@ export const TaskProvider = ({ children }) => {
       return;
     }
 
+    const previousPendingTasksMap = new Map(
+      tasksRef.current
+        .filter((task) => task.status === 'pending' && !task.reassignedTo)
+        .map((task) => [task.id, task])
+    );
+
+    const localPending = getLocalPendingTasks();
+    const localPendingTasksMap = new Map(
+      localPending
+        .filter((task) => task.status === 'pending')
+        .map((task) => [task.id, task])
+    );
+
+    const localReassigned = JSON.parse(localStorage.getItem('reassignedTasks') || '[]');
+
+    const normalizeEmployeeRows = (rows) => rows.map((row) => {
+      const normalized = normalizeTask(row);
+      if (normalized.status === 'pending') {
+        const prev = previousPendingTasksMap.get(normalized.id) ?? localPendingTasksMap.get(normalized.id);
+        if (prev) {
+          normalized.pendingReason = normalized.pendingReason ?? prev.pendingReason;
+          normalized.pendingAt = normalized.pendingAt ?? prev.pendingAt;
+        }
+      }
+      return normalized;
+    });
+
+    const mergeUniqueTasks = (tasksToMerge) => {
+      const uniqueTasksMap = new Map(tasksToMerge.map((t) => [t.id, t]));
+
+      previousPendingTasksMap.forEach((prevTask, id) => {
+        if (!uniqueTasksMap.has(id)) {
+          uniqueTasksMap.set(id, prevTask);
+        } else {
+          const existing = uniqueTasksMap.get(id);
+          if (existing.status === 'pending') {
+            existing.pendingReason = existing.pendingReason ?? prevTask.pendingReason;
+            existing.pendingAt = existing.pendingAt ?? prevTask.pendingAt;
+          }
+        }
+      });
+
+      localPending.forEach((prevTask) => {
+        const existing = uniqueTasksMap.get(prevTask.id);
+        if (!existing) {
+          uniqueTasksMap.set(prevTask.id, prevTask);
+        } else if (existing.status === 'pending') {
+          existing.pendingReason = existing.pendingReason ?? prevTask.pendingReason;
+          existing.pendingAt = existing.pendingAt ?? prevTask.pendingAt;
+        }
+      });
+
+      return Array.from(uniqueTasksMap.values());
+    };
+
     try {
       const employeeRows = await fetchEmployeeTasks(userId);
       const todayRows = await fetchTodayTasks(userId, employeeRows);
+
+      const normalizedEmployeeTasks = normalizeEmployeeRows(employeeRows);
+      const mergedTasks = [...normalizedEmployeeTasks, ...localReassigned, ...localPending];
+      const uniqueTasks = mergeUniqueTasks(mergedTasks);
+      const normalizedTodayTasks = todayRows.map(normalizeTask);
+
       setTaskState({
-        tasks: employeeRows.map(normalizeTask),
-        todayTasks: todayRows.map(normalizeTask),
+        tasks: uniqueTasks,
+        todayTasks: normalizedTodayTasks,
       });
+      console.log('Loaded tasks state:', uniqueTasks);
     } catch (err) {
       if (USE_FILTER_ENDPOINTS && isNotFound(err)) {
         try {
@@ -144,10 +238,17 @@ export const TaskProvider = ({ children }) => {
           const todayRows = employeeRows.filter((task) =>
             isTodayDate(task.created_at || task.createdAt)
           );
+
+          const normalizedEmployeeTasks = normalizeEmployeeRows(employeeRows);
+          const mergedTasks = [...normalizedEmployeeTasks, ...localReassigned, ...localPending];
+          const uniqueTasks = mergeUniqueTasks(mergedTasks);
+          const normalizedTodayTasks = todayRows.map(normalizeTask);
+
           setTaskState({
-            tasks: employeeRows.map(normalizeTask),
-            todayTasks: todayRows.map(normalizeTask),
+            tasks: uniqueTasks,
+            todayTasks: normalizedTodayTasks,
           });
+          console.log('Loaded tasks state (fallback):', uniqueTasks);
           return;
         } catch (fallbackErr) {
           console.error('Failed to load employee tasks', fallbackErr);
@@ -159,7 +260,10 @@ export const TaskProvider = ({ children }) => {
   };
 
   useEffect(() => {
-    loadTasks();
+    // Initialize tasks on mount
+    (async () => {
+      await loadTasks();
+    })();
 
     const handleRefresh = () => {
       loadTasks();
@@ -182,9 +286,13 @@ export const TaskProvider = ({ children }) => {
       window.removeEventListener('tasks:refresh', handleRefresh);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const updateTaskStatus = async (taskId, newStatus, additionalData = {}) => {
+    // Get the current task from state first
+    const currentTask = tasks.find((item) => item.id === taskId);
+    if (!currentTask) return;
+
     const normalizedStatus = normalizeStatus(newStatus);
     const reason = additionalData.pendingReason || additionalData.reassignReason || additionalData.reason || null;
     const parsedProgress = additionalData.progress == null ? null : Number(additionalData.progress);
@@ -200,12 +308,16 @@ export const TaskProvider = ({ children }) => {
       ? 'done'
       : normalizedStatus === 'in_progress'
         ? 'in_progress'
-        : 'pending';
+        : normalizedStatus === 'reassigned'
+          ? 'reassigned'
+          : 'pending';
     const legacyBackendStatus = normalizedStatus === 'done'
       ? 'Completed'
       : normalizedStatus === 'in_progress'
         ? 'In Progress'
-        : 'To Do';
+        : normalizedStatus === 'reassigned'
+          ? 'Reassigned'
+          : 'To Do';
 
     if (USE_UPDATE_STATUS_ENDPOINT) {
       try {
@@ -221,9 +333,6 @@ export const TaskProvider = ({ children }) => {
           console.error('Failed to update task status', err);
           return;
         }
-
-        const currentTask = tasks.find((item) => item.id === taskId);
-        if (!currentTask) return;
 
         try {
           if (reassignedTo) {
@@ -245,9 +354,6 @@ export const TaskProvider = ({ children }) => {
         }
       }
     } else {
-      const currentTask = tasks.find((item) => item.id === taskId);
-      if (!currentTask) return;
-
       try {
         if (reassignedTo) {
           await axios.put(`${API_BASE}/tasks/${taskId}/reassign`, {
@@ -268,29 +374,66 @@ export const TaskProvider = ({ children }) => {
       }
     }
 
-    const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
-    const task = tasks.find((item) => item.id === taskId);
+    // Update local state immediately for UI responsiveness
+    const updatedTask = { ...currentTask, ...additionalData, status: normalizedStatus };
+    const updatedTasks = tasks.map(t => t.id === taskId ? updatedTask : t);
+    const updatedTodayTasks = todayTasks.map(t => t.id === taskId ? updatedTask : t);
+    setTaskState(prev => ({ ...prev, tasks: updatedTasks, todayTasks: updatedTodayTasks }));
+    console.log('Updated task state:', updatedTasks);
 
-    if (task && backendStatus === 'done') {
-      notifyTaskCompleted(task, currentUser.name || 'Employee');
+    const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+
+    if (currentTask && normalizedStatus === 'done') {
+      notifyTaskCompleted(updatedTask, currentUser.name || 'Employee');
     }
-    if (task && reassignedTo) {
-      notifyTaskReassigned(task, currentUser.name || 'Admin', reassignedTo);
+    if (currentTask && reassignedTo) {
+      notifyTaskReassigned(updatedTask, currentUser.name || 'Admin', reassignedTo);
     }
-    await loadTasks();
+    
+    // Persist reassigned tasks to localStorage for refresh resilience
+    if (normalizedStatus === 'pending') {
+      try {
+        const storedPending = getLocalPendingTasks();
+        const filtered = storedPending.filter(t => t.id !== taskId);
+        const updated = [...filtered, updatedTask];
+        saveLocalPendingTasks(updated);
+      } catch (error) {
+        console.error('Failed to save pending task to localStorage', error);
+      }
+    } else {
+      removeLocalPendingTask(taskId);
+    }
+
+    if (normalizedStatus === 'reassigned') {
+      try {
+        const storedReassigned = JSON.parse(localStorage.getItem('reassignedTasks') || '[]');
+        const filtered = storedReassigned.filter(t => t.id !== taskId);
+        const updated = [...filtered, updatedTask];
+        localStorage.setItem('reassignedTasks', JSON.stringify(updated));
+      } catch (error) {
+        console.error('Failed to save reassigned task to localStorage', error);
+      }
+    }
+    
+    // Only load tasks for non-reassigned updates to prevent losing reassigned tasks
+    if (normalizedStatus !== 'reassigned') {
+      await loadTasks();
+    }
   };
 
   const getTasksByStatus = (status) => {
+    // Direct filtering without complex logic for reassigned
+    if (status === 'reassigned') {
+      return tasks.filter(task => task.status === 'reassigned');
+    }
+    
+    // For other statuses
     if (status === 'inprogress') {
       return tasks.filter(task => task.status === 'in_progress');
     }
 
     if (status === 'todo') {
       return tasks.filter(task => task.status === 'pending' && !task.reassignedTo);
-    }
-
-    if (status === 'reassigned') {
-      return tasks.filter(task => task.reassignedTo && task.status !== 'done');
     }
 
     if (status === 'pending') {
@@ -301,7 +444,12 @@ export const TaskProvider = ({ children }) => {
   };
 
   const getTodayTasks = () => {
-    return todayTasks.filter((task) => task.status !== 'done');
+    // Return all active tasks (not done, not reassigned)
+    // Filter from main tasks array to include recently updated tasks
+    return tasks.filter((task) => 
+      task.status !== 'done' && 
+      task.status !== 'reassigned'
+    );
   };
 
   const value = {

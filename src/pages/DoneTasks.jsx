@@ -1,14 +1,20 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTaskContext } from "../context/taskContextStore";
+import RefreshWrapper from "../components/RefreshWrapper";
 
 export default function DoneTasks({ setOpenMenu }) {
   const navigate = useNavigate();
-  const { getTasksByStatus } = useTaskContext();
+  const { getTasksByStatus, refreshTasks } = useTaskContext();
   const [showModal, setShowModal] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
 
   const doneTasks = getTasksByStatus('done');
+
+  const handleDoneRefresh = useCallback(async () => {
+    if (!refreshTasks) return;
+    await refreshTasks();
+  }, [refreshTasks]);
 
   const formatDate = (dateString) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -21,7 +27,8 @@ export default function DoneTasks({ setOpenMenu }) {
   };
 
   return (
-    <div className="done-tasks-container">
+    <RefreshWrapper onRefresh={handleDoneRefresh}>
+      <div className="done-tasks-container">
       {/* Page Header */}
       <div className="page-header">
         <h1 className="page-title">Completed Tasks</h1>
@@ -504,5 +511,6 @@ export default function DoneTasks({ setOpenMenu }) {
         }
       `}</style>
     </div>
+  </RefreshWrapper>
   );
 }

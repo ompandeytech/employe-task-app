@@ -193,9 +193,9 @@ function App() {
               <Route path="/salary" element={<Salary setOpenMenu={setOpenMenu} />} />
 
               <Route path="/done" element={<DoneTasks setOpenMenu={setOpenMenu} />} />
-              <Route path="/inprogress" element={<InProgressTasks setOpenMenu={setOpenMenu} />} />
+              <Route path="/inprogress" element={<InProgressTasks />} />
               <Route path="/pending" element={<PendingTasks setOpenMenu={setOpenMenu} />} />
-              <Route path="/reassigned" element={<ReassignedTasks setOpenMenu={setOpenMenu} />} />
+              <Route path="/reassigned" element={<ReassignedTasks />} />
 
               <Route path="*" element={<Navigate to="/" />} />
             </Routes>

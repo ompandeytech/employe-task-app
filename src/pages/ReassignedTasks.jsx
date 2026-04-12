@@ -1,14 +1,31 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTaskContext } from "../context/taskContextStore";
+import { fetchTaskNotes } from "../utils/taskNotes";
+import TaskCard from "../components/TaskCard";
+import RefreshWrapper from "../components/RefreshWrapper";
 
-export default function ReassignedTasks({ setOpenMenu }) {
+export default function ReassignedTasks() {
   const navigate = useNavigate();
-  const { getTasksByStatus, updateTaskStatus } = useTaskContext();
+  const { getTasksByStatus, updateTaskStatus, refreshTasks } = useTaskContext();
   const [showModal, setShowModal] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
+  const [modalType, setModalType] = useState('');
+  const [notesList, setNotesList] = useState([]);
+  const [noteLoading, setNoteLoading] = useState(false);
+  const [noteError, setNoteError] = useState('');
 
-  const reassignedTasks = getTasksByStatus('reassigned');
+  // Refresh tasks on mount to ensure latest reassigned tasks are visible
+  useEffect(() => {
+    refreshTasks();
+  }, [refreshTasks]);
+
+  const reassignedTasks = getTasksByStatus('reassigned')
+
+  const handleReassignedRefresh = useCallback(async () => {
+    if (!refreshTasks) return;
+    await refreshTasks();
+  }, [refreshTasks]);
 
   const formatDate = (dateString) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -31,31 +48,88 @@ export default function ReassignedTasks({ setOpenMenu }) {
     return employees[employeeId] || employeeId;
   };
 
-  const handleTakeBack = (task) => {
-    updateTaskStatus(task.id, 'todo', {
-      reassignedAt: null,
-      reassignedTo: null,
-      reassignReason: null
-    });
+  const loadTaskNotes = async (taskId) => {
+    if (!taskId) return;
+    setNoteLoading(true);
+    setNoteError('');
+    setNotesList([]);
+    try {
+      const notes = await fetchTaskNotes(taskId);
+      setNotesList(notes);
+    } catch (err) {
+      console.error("Failed to load task notes:", err);
+      setNoteError(err.response?.data?.error || err.message || "Unable to load notes.");
+      setNotesList([]);
+    } finally {
+      setNoteLoading(false);
+    }
   };
 
-  const handleComplete = (task) => {
-    setSelectedTask(task);
-    setShowModal(true);
+  const handleAction = async (task, action) => {
+    if (action === 'take-back') {
+      try {
+        const storedReassigned = JSON.parse(localStorage.getItem('reassignedTasks') || '[]');
+        const filtered = storedReassigned.filter(t => t.id !== task.id);
+        localStorage.setItem('reassignedTasks', JSON.stringify(filtered));
+      } catch (error) {
+        console.error('Failed to remove task from localStorage', error);
+      }
+      updateTaskStatus(task.id, 'todo', {
+        reassignedAt: null,
+        reassignedTo: null,
+        reassignReason: null
+      });
+      return;
+    }
+
+    if (action === 'done') {
+      setSelectedTask(task);
+      setModalType(action);
+      setShowModal(true);
+      return;
+    }
+
+    if (action === 'note-view') {
+      setSelectedTask(task);
+      setModalType(action);
+      setShowModal(true);
+      await loadTaskNotes(task.id);
+    }
   };
 
   const confirmComplete = () => {
     if (selectedTask) {
+      // Remove from localStorage before changing status
+      try {
+        const storedReassigned = JSON.parse(localStorage.getItem('reassignedTasks') || '[]');
+        const filtered = storedReassigned.filter(t => t.id !== selectedTask.id);
+        localStorage.setItem('reassignedTasks', JSON.stringify(filtered));
+      } catch (error) {
+        console.error('Failed to remove task from localStorage', error);
+      }
       updateTaskStatus(selectedTask.id, 'done', {
         completedAt: new Date().toISOString()
       });
       setShowModal(false);
       setSelectedTask(null);
+      setModalType('');
+      setNotesList([]);
+      setNoteError('');
     }
   };
 
+  const closeModal = () => {
+    setShowModal(false);
+    setSelectedTask(null);
+    setModalType('');
+    setNotesList([]);
+    setNoteError('');
+    setNoteLoading(false);
+  };
+
   return (
-    <div className="reassigned-tasks-container">
+    <RefreshWrapper onRefresh={handleReassignedRefresh}>
+      <div className="reassigned-tasks-container">
       {/* Page Header */}
       <div className="page-header">
         <h1 className="page-title">Reassigned Tasks</h1>
@@ -72,108 +146,98 @@ export default function ReassignedTasks({ setOpenMenu }) {
           </div>
         ) : (
           reassignedTasks.map(task => (
-            <div 
-              key={task.id} 
-              className="task-card reassigned"
-            >
-              {/* Reassigned Badge */}
-              <div className="reassigned-badge">
-                <i className="fas fa-user-pen"></i>
-                <span>REASSIGNED</span>
-              </div>
-
-              {/* Task Content */}
-              <div className="task-content">
-                <h3 className="task-title">{task.title}</h3>
-                <p className="task-description">{task.description}</p>
-                
-                <div className="task-details">
-                  <div className="detail-item">
-                    <i className="fas fa-user"></i>
-                    <span>Originally: {task.assignedTo}</span>
-                  </div>
-                  <div className="detail-item">
-                    <i className="fas fa-user-plus"></i>
-                    <span>Reassigned to: {getEmployeeName(task.reassignedTo)}</span>
-                  </div>
-                  <div className="detail-item">
-                    <i className="fas fa-calendar-alt"></i>
-                    <span>Reassigned: {formatDate(task.reassignedAt)}</span>
-                  </div>
-                </div>
-
-                {/* Reassign Reason */}
-                {task.reassignReason && (
-                  <div className="reassign-reason">
-                    <i className="fas fa-exchange-alt"></i>
-                    <div>
-                      <strong>Reason:</strong> {task.reassignReason}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Action Buttons */}
-              <div className="action-buttons">
-                <button 
-                  className="action-btn take-back"
-                  onClick={() => handleTakeBack(task)}
-                >
-                  <i className="fas fa-undo"></i>
-                  <span>Take Back</span>
-                </button>
-                <button 
-                  className="action-btn complete"
-                  onClick={() => handleComplete(task)}
-                >
-                  <i className="fas fa-circle-check"></i>
-                  <span>Complete</span>
-                </button>
-              </div>
-            </div>
+            <TaskCard
+              key={task.id}
+              task={task}
+              onAction={handleAction}
+              actions={[
+                { action: 'take-back', label: 'Take Back', icon: 'fa-undo', className: 'take-back' },
+                { action: 'done', label: 'Complete', icon: 'fa-circle-check', className: 'complete' },
+              ]}
+              showViewNotes={false}
+            />
           ))
         )}
       </div>
 
-      {/* Complete Task Modal */}
+      {/* Modal */}
       {showModal && selectedTask && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+        <div className="modal-overlay" onClick={closeModal}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-icon reassigned">
-              <i className="fas fa-circle-check"></i>
-            </div>
-            <h3 className="modal-title">Complete Reassigned Task?</h3>
-            <p className="modal-message">Are you sure you have completed this task?</p>
-            
-            <div className="task-details-modal">
-              <div className="detail-row">
-                <label>Task:</label>
-                <span>{selectedTask.title}</span>
-              </div>
-              <div className="detail-row">
-                <label>Reassigned to:</label>
-                <span>{getEmployeeName(selectedTask.reassignedTo)}</span>
-              </div>
-              <div className="detail-row">
-                <label>Reassigned:</label>
-                <span>{formatDate(selectedTask.reassignedAt)}</span>
-              </div>
-              {selectedTask.reassignReason && (
-                <div className="detail-row">
-                  <label>Reason:</label>
-                  <span>{selectedTask.reassignReason}</span>
+            {modalType === 'note-view' ? (
+              <>
+                <div className="modal-icon note">
+                  <i className="fas fa-sticky-note"></i>
                 </div>
-              )}
-            </div>
+                <h3 className="modal-title">Task Notes</h3>
+                {noteLoading ? (
+                  <p className="modal-message">Loading notes...</p>
+                ) : noteError ? (
+                  <p className="modal-message" style={{ color: '#ef4444' }}>{noteError}</p>
+                ) : notesList.length === 0 ? (
+                  <p className="modal-message">No notes yet</p>
+                ) : (
+                  <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '16px' }}>
+                    {notesList.map((note, idx) => (
+                      <div key={idx} style={{
+                        padding: '12px',
+                        backgroundColor: '#f0f9ff',
+                        borderRadius: '8px',
+                        marginBottom: '8px',
+                        fontSize: '13px'
+                      }}>
+                        <strong>{note.employee_name || note.employeeName || "Unknown"}</strong>
+                        <p style={{ marginTop: '4px', marginBottom: 0 }}>{note.note}</p>
+                        <small style={{ color: '#94a3b8' }}>
+                          {new Date(note.created_at || note.createdAt).toLocaleString()}
+                        </small>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="modal-actions">
+                  <button className="btn-cancel" onClick={closeModal}>Close</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="modal-icon reassigned">
+                  <i className="fas fa-circle-check"></i>
+                </div>
+                <h3 className="modal-title">Complete Reassigned Task?</h3>
+                <p className="modal-message">Are you sure you have completed this task?</p>
+                
+                <div className="task-details-modal">
+                  <div className="detail-row">
+                    <label>Task:</label>
+                    <span>{selectedTask.title}</span>
+                  </div>
+                  <div className="detail-row">
+                    <label>Reassigned to:</label>
+                    <span>{getEmployeeName(selectedTask.reassignedTo)}</span>
+                  </div>
+                  <div className="detail-row">
+                    <label>Reassigned:</label>
+                    <span>{formatDate(selectedTask.reassignedAt)}</span>
+                  </div>
+                  {selectedTask.reassignReason && (
+                    <div className="detail-row">
+                      <label>Reason:</label>
+                      <span>{selectedTask.reassignReason}</span>
+                    </div>
+                  )}
+                </div>
 
-            <div className="modal-actions">
-              <button className="btn-cancel" onClick={() => setShowModal(false)}>
-                Cancel
-              </button>
-              <button className="btn-confirm complete" onClick={confirmComplete}>
-                Complete
-              </button>
-            </div>
+                <div className="modal-actions">
+                  <button className="btn-cancel" onClick={closeModal}>
+                    Cancel
+                  </button>
+                  <button className="btn-confirm complete" onClick={confirmComplete}>
+                    Complete
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -269,151 +333,6 @@ export default function ReassignedTasks({ setOpenMenu }) {
           display: flex;
           flex-direction: column;
           gap: 16px;
-        }
-
-        /* Task Card */
-        .task-card {
-          background: rgba(255, 255, 255, 0.95);
-          backdrop-filter: blur(10px);
-          border-radius: 20px;
-          padding: 20px;
-          box-shadow: 0 8px 32px rgba(139, 92, 246, 0.15);
-          border-left: 4px solid #8b5cf6;
-          position: relative;
-          transition: transform 0.2s ease, box-shadow 0.2s ease;
-        }
-
-        .task-card:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 12px 40px rgba(139, 92, 246, 0.2);
-        }
-
-        .reassigned-badge {
-          position: absolute;
-          top: -10px;
-          right: 20px;
-          background: linear-gradient(135deg, #8b5cf6, #7c3aed);
-          color: white;
-          padding: 6px 12px;
-          border-radius: 20px;
-          font-size: 11px;
-          font-weight: 600;
-          display: flex;
-          align-items: center;
-          gap: 4px;
-          box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
-        }
-
-        .reassigned-badge i {
-          font-size: 10px;
-        }
-
-        .task-content {
-          margin-bottom: 16px;
-          padding-top: 10px;
-        }
-
-        .task-title {
-          font-size: 18px;
-          font-weight: 600;
-          color: #1e293b;
-          margin-bottom: 8px;
-        }
-
-        .task-description {
-          font-size: 14px;
-          color: #64748b;
-          line-height: 1.5;
-          margin-bottom: 12px;
-        }
-
-        .task-details {
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-          margin-bottom: 12px;
-        }
-
-        .detail-item {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          font-size: 13px;
-          color: #475569;
-        }
-
-        .detail-item i {
-          font-size: 12px;
-          color: #8b5cf6;
-        }
-
-        .reassign-reason {
-          display: flex;
-          align-items: flex-start;
-          gap: 8px;
-          padding: 12px;
-          background: rgba(139, 92, 246, 0.1);
-          border-radius: 8px;
-          border-left: 3px solid #8b5cf6;
-          font-size: 13px;
-          color: #6b21a8;
-        }
-
-        .reassign-reason i {
-          font-size: 14px;
-          color: #8b5cf6;
-          margin-top: 2px;
-        }
-
-        .reassign-reason strong {
-          color: #6b21a8;
-        }
-
-        /* Action Buttons */
-        .action-buttons {
-          display: flex;
-          gap: 8px;
-        }
-
-        .action-btn {
-          flex: 1;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 6px;
-          padding: 10px 12px;
-          border: none;
-          border-radius: 12px;
-          font-size: 12px;
-          font-weight: 500;
-          cursor: pointer;
-          transition: all 0.2s ease;
-        }
-
-        .action-btn i {
-          font-size: 14px;
-        }
-
-        .action-btn.take-back {
-          background: rgba(59, 130, 246, 0.1);
-          color: #3b82f6;
-          border: 1px solid rgba(59, 130, 246, 0.2);
-        }
-
-        .action-btn.take-back:hover {
-          background: rgba(59, 130, 246, 0.2);
-          transform: translateY(-1px);
-        }
-
-        .action-btn.complete {
-          background: rgba(16, 185, 129, 0.1);
-          color: #10b981;
-          border: 1px solid rgba(16, 185, 129, 0.2);
-        }
-
-        .action-btn.complete:hover {
-          background: rgba(16, 185, 129, 0.2);
-          transform: translateY(-1px);
         }
 
         /* Modal */
@@ -629,5 +548,6 @@ export default function ReassignedTasks({ setOpenMenu }) {
         }
       `}</style>
     </div>
+  </RefreshWrapper>
   );
 }

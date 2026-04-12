@@ -1,14 +1,26 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTaskContext } from "../context/taskContextStore";
+import TaskCard from "../components/TaskCard";
+import { fetchTaskNotes } from "../utils/taskNotes";
+import RefreshWrapper from "../components/RefreshWrapper";
 
-export default function PendingTasks({ setOpenMenu }) {
+export default function PendingTasks() {
   const navigate = useNavigate();
-  const { getTasksByStatus, updateTaskStatus } = useTaskContext();
+  const { getTasksByStatus, updateTaskStatus, refreshTasks } = useTaskContext();
   const [showModal, setShowModal] = useState(false);
+  const [modalType, setModalType] = useState('');
   const [selectedTask, setSelectedTask] = useState(null);
+  const [notesList, setNotesList] = useState([]);
+  const [noteLoading, setNoteLoading] = useState(false);
+  const [noteError, setNoteError] = useState('');
 
   const pendingTasks = getTasksByStatus('pending');
+
+  const handlePendingRefresh = useCallback(async () => {
+    if (!refreshTasks) return;
+    await refreshTasks();
+  }, [refreshTasks]);
 
   const formatDate = (dateString) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -20,15 +32,40 @@ export default function PendingTasks({ setOpenMenu }) {
     });
   };
 
-  const handleResume = (task) => {
-    updateTaskStatus(task.id, 'inprogress', {
-      startedAt: new Date().toISOString()
-    });
+  const loadTaskNotes = async (taskId) => {
+    if (!taskId) return;
+    setNoteLoading(true);
+    setNoteError('');
+    setNotesList([]);
+    try {
+      const notes = await fetchTaskNotes(taskId);
+      setNotesList(notes);
+    } catch (err) {
+      console.error("Failed to load task notes:", err);
+      setNoteError(err.response?.data?.error || err.message || "Unable to load notes.");
+      setNotesList([]);
+    } finally {
+      setNoteLoading(false);
+    }
   };
 
-  const handleComplete = (task) => {
+  const handleAction = async (task, action) => {
+    if (action === 'in-progress') {
+      updateTaskStatus(task.id, 'inprogress', {
+        startedAt: new Date().toISOString()
+      });
+      return;
+    }
+
     setSelectedTask(task);
+    setModalType(action);
     setShowModal(true);
+    setNotesList([]);
+    setNoteError('');
+
+    if (action === 'note-view') {
+      await loadTaskNotes(task.id);
+    }
   };
 
   const confirmComplete = () => {
@@ -38,11 +75,24 @@ export default function PendingTasks({ setOpenMenu }) {
       });
       setShowModal(false);
       setSelectedTask(null);
+      setModalType('');
+      setNotesList([]);
+      setNoteError('');
     }
   };
 
+  const closeModal = () => {
+    setShowModal(false);
+    setSelectedTask(null);
+    setModalType('');
+    setNotesList([]);
+    setNoteError('');
+    setNoteLoading(false);
+  };
+
   return (
-    <div className="pending-tasks-container">
+    <RefreshWrapper onRefresh={handlePendingRefresh}>
+      <div className="pending-tasks-container">
       {/* Page Header */}
       <div className="page-header">
         <h1 className="page-title">Pending Tasks</h1>
@@ -59,100 +109,94 @@ export default function PendingTasks({ setOpenMenu }) {
           </div>
         ) : (
           pendingTasks.map(task => (
-            <div 
-              key={task.id} 
-              className="task-card pending"
-            >
-              {/* Pending Badge */}
-              <div className="pending-badge">
-                <i className="fas fa-clock"></i>
-                <span>PENDING</span>
-              </div>
-
-              {/* Task Content */}
-              <div className="task-content">
-                <h3 className="task-title">{task.title}</h3>
-                <p className="task-description">{task.description}</p>
-                
-                <div className="task-details">
-                  <div className="detail-item">
-                    <i className="fas fa-user"></i>
-                    <span>Assigned To: {task.assignedTo}</span>
-                  </div>
-                  <div className="detail-item">
-                    <i className="fas fa-calendar-alt"></i>
-                    <span>Since: {formatDate(task.pendingAt)}</span>
-                  </div>
-                </div>
-
-                {/* Pending Reason */}
-                {task.pendingReason && (
-                  <div className="pending-reason">
-                    <i className="fas fa-exclamation-triangle"></i>
-                    <div>
-                      <strong>Reason:</strong> {task.pendingReason}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Action Buttons */}
-              <div className="action-buttons">
-                <button 
-                  className="action-btn resume"
-                  onClick={() => handleResume(task)}
-                >
-                  <i className="fas fa-play"></i>
-                  <span>Resume</span>
-                </button>
-                <button 
-                  className="action-btn complete"
-                  onClick={() => handleComplete(task)}
-                >
-                  <i className="fas fa-circle-check"></i>
-                  <span>Complete</span>
-                </button>
-              </div>
-            </div>
+            <TaskCard
+              key={task.id}
+              task={task}
+              onAction={handleAction}
+              actions={[
+                { action: 'in-progress', label: 'Resume', icon: 'fa-play', className: 'resume' },
+                { action: 'done', label: 'Complete', icon: 'fa-circle-check', className: 'complete' },
+              ]}
+              showViewNotes={false}
+            />
           ))
         )}
       </div>
 
       {/* Complete Task Modal */}
       {showModal && selectedTask && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+        <div className="modal-overlay" onClick={closeModal}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-icon pending">
-              <i className="fas fa-circle-check"></i>
-            </div>
-            <h3 className="modal-title">Complete Pending Task?</h3>
-            <p className="modal-message">Are you sure you have completed this task?</p>
-            
-            <div className="task-details-modal">
-              <div className="detail-row">
-                <label>Task:</label>
-                <span>{selectedTask.title}</span>
-              </div>
-              <div className="detail-row">
-                <label>Pending Since:</label>
-                <span>{formatDate(selectedTask.pendingAt)}</span>
-              </div>
-              {selectedTask.pendingReason && (
-                <div className="detail-row">
-                  <label>Reason:</label>
-                  <span>{selectedTask.pendingReason}</span>
+            {modalType === 'note-view' ? (
+              <>
+                <div className="modal-icon note">
+                  <i className="fas fa-sticky-note"></i>
                 </div>
-              )}
-            </div>
+                <h3 className="modal-title">Task Notes</h3>
+                {noteLoading ? (
+                  <p className="modal-message">Loading notes...</p>
+                ) : noteError ? (
+                  <p className="modal-message" style={{ color: '#ef4444' }}>{noteError}</p>
+                ) : notesList.length === 0 ? (
+                  <p className="modal-message">No notes yet</p>
+                ) : (
+                  <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '16px' }}>
+                    {notesList.map((note, idx) => (
+                      <div key={idx} style={{
+                        padding: '12px',
+                        backgroundColor: '#f0f9ff',
+                        borderRadius: '8px',
+                        marginBottom: '8px',
+                        fontSize: '13px'
+                      }}>
+                        <strong>{note.employee_name || note.employeeName || "Unknown"}</strong>
+                        <p style={{ marginTop: '4px', marginBottom: 0 }}>{note.note}</p>
+                        <small style={{ color: '#94a3b8' }}>
+                          {new Date(note.created_at || note.createdAt).toLocaleString()}
+                        </small>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="modal-actions">
+                  <button className="btn-cancel" onClick={closeModal}>Close</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="modal-icon pending">
+                  <i className="fas fa-circle-check"></i>
+                </div>
+                <h3 className="modal-title">Complete Pending Task?</h3>
+                <p className="modal-message">Are you sure you have completed this task?</p>
+                
+                <div className="task-details-modal">
+                  <div className="detail-row">
+                    <label>Task:</label>
+                    <span>{selectedTask.title}</span>
+                  </div>
+                  <div className="detail-row">
+                    <label>Pending Since:</label>
+                    <span>{formatDate(selectedTask.pendingAt)}</span>
+                  </div>
+                  {selectedTask.pendingReason && (
+                    <div className="detail-row">
+                      <label>Reason:</label>
+                      <span>{selectedTask.pendingReason}</span>
+                    </div>
+                  )}
+                </div>
 
-            <div className="modal-actions">
-              <button className="btn-cancel" onClick={() => setShowModal(false)}>
-                Cancel
-              </button>
-              <button className="btn-confirm complete" onClick={confirmComplete}>
-                Complete
-              </button>
-            </div>
+                <div className="modal-actions">
+                  <button className="btn-cancel" onClick={closeModal}>
+                    Cancel
+                  </button>
+                  <button className="btn-confirm complete" onClick={confirmComplete}>
+                    Complete
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -248,151 +292,6 @@ export default function PendingTasks({ setOpenMenu }) {
           display: flex;
           flex-direction: column;
           gap: 16px;
-        }
-
-        /* Task Card */
-        .task-card {
-          background: rgba(255, 255, 255, 0.95);
-          backdrop-filter: blur(10px);
-          border-radius: 20px;
-          padding: 20px;
-          box-shadow: 0 8px 32px rgba(249, 115, 22, 0.15);
-          border-left: 4px solid #f97316;
-          position: relative;
-          transition: transform 0.2s ease, box-shadow 0.2s ease;
-        }
-
-        .task-card:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 12px 40px rgba(249, 115, 22, 0.2);
-        }
-
-        .pending-badge {
-          position: absolute;
-          top: -10px;
-          right: 20px;
-          background: linear-gradient(135deg, #f97316, #ea580c);
-          color: white;
-          padding: 6px 12px;
-          border-radius: 20px;
-          font-size: 11px;
-          font-weight: 600;
-          display: flex;
-          align-items: center;
-          gap: 4px;
-          box-shadow: 0 4px 12px rgba(249, 115, 22, 0.3);
-        }
-
-        .pending-badge i {
-          font-size: 10px;
-        }
-
-        .task-content {
-          margin-bottom: 16px;
-          padding-top: 10px;
-        }
-
-        .task-title {
-          font-size: 18px;
-          font-weight: 600;
-          color: #1e293b;
-          margin-bottom: 8px;
-        }
-
-        .task-description {
-          font-size: 14px;
-          color: #64748b;
-          line-height: 1.5;
-          margin-bottom: 12px;
-        }
-
-        .task-details {
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-          margin-bottom: 12px;
-        }
-
-        .detail-item {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          font-size: 13px;
-          color: #475569;
-        }
-
-        .detail-item i {
-          font-size: 12px;
-          color: #f97316;
-        }
-
-        .pending-reason {
-          display: flex;
-          align-items: flex-start;
-          gap: 8px;
-          padding: 12px;
-          background: rgba(249, 115, 22, 0.1);
-          border-radius: 8px;
-          border-left: 3px solid #f97316;
-          font-size: 13px;
-          color: #9a3412;
-        }
-
-        .pending-reason i {
-          font-size: 14px;
-          color: #f97316;
-          margin-top: 2px;
-        }
-
-        .pending-reason strong {
-          color: #9a3412;
-        }
-
-        /* Action Buttons */
-        .action-buttons {
-          display: flex;
-          gap: 8px;
-        }
-
-        .action-btn {
-          flex: 1;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 6px;
-          padding: 10px 12px;
-          border: none;
-          border-radius: 12px;
-          font-size: 12px;
-          font-weight: 500;
-          cursor: pointer;
-          transition: all 0.2s ease;
-        }
-
-        .action-btn i {
-          font-size: 14px;
-        }
-
-        .action-btn.resume {
-          background: rgba(59, 130, 246, 0.1);
-          color: #3b82f6;
-          border: 1px solid rgba(59, 130, 246, 0.2);
-        }
-
-        .action-btn.resume:hover {
-          background: rgba(59, 130, 246, 0.2);
-          transform: translateY(-1px);
-        }
-
-        .action-btn.complete {
-          background: rgba(16, 185, 129, 0.1);
-          color: #10b981;
-          border: 1px solid rgba(16, 185, 129, 0.2);
-        }
-
-        .action-btn.complete:hover {
-          background: rgba(16, 185, 129, 0.2);
-          transform: translateY(-1px);
         }
 
         /* Modal */
@@ -608,5 +507,6 @@ export default function PendingTasks({ setOpenMenu }) {
         }
       `}</style>
     </div>
+  </RefreshWrapper>
   );
 }

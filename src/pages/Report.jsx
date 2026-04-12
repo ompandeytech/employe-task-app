@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTaskContext } from "../context/taskContextStore";
 import NotificationBell from "../components/NotificationBell";
 import axios from "axios";
 import { API_BASE, getAuthHeaders } from "../utils/apiConfig";
+import RefreshWrapper from "../components/RefreshWrapper";
 
 const getUserId = () => {
   const user = JSON.parse(localStorage.getItem("user") || "{}");
@@ -32,31 +33,41 @@ const isPresentRecord = (record) => {
 
 export default function Report({ setOpenMenu }) {
   const navigate = useNavigate();
-  const { tasks } = useTaskContext();
+  const { tasks, refreshTasks } = useTaskContext();
   const userId = getUserId();
   const [range, setRange] = useState("7");
   const [attendanceRows, setAttendanceRows] = useState([]);
 
-  useEffect(() => {
-    const loadAttendance = async () => {
-      if (!userId) {
-        setAttendanceRows([]);
-        return;
-      }
-      try {
-        const res = await axios.get(`${API_BASE}/attendance`, {
-          headers: getAuthHeaders(),
-        });
-        const rows = Array.isArray(res.data) ? res.data : [];
-        const employeeRows = rows.filter((row) => String(row.employee_id) === String(userId));
-        setAttendanceRows(employeeRows);
-      } catch {
-        setAttendanceRows([]);
-      }
-    };
-
-    loadAttendance();
+  const loadAttendance = useCallback(async () => {
+    if (!userId) {
+      setAttendanceRows([]);
+      return;
+    }
+    try {
+      const res = await axios.get(`${API_BASE}/attendance`, {
+        headers: getAuthHeaders(),
+      });
+      const rows = Array.isArray(res.data) ? res.data : [];
+      const employeeRows = rows.filter((row) => String(row.employee_id) === String(userId));
+      setAttendanceRows(employeeRows);
+    } catch {
+      setAttendanceRows([]);
+    }
   }, [userId]);
+
+  useEffect(() => {
+    const timerId = window.setTimeout(() => {
+      void loadAttendance();
+    }, 0);
+    return () => window.clearTimeout(timerId);
+  }, [loadAttendance]);
+
+  const handleReportRefresh = useCallback(async () => {
+    await Promise.all([
+      loadAttendance(),
+      refreshTasks ? refreshTasks() : Promise.resolve(),
+    ]);
+  }, [loadAttendance, refreshTasks]);
 
   // Filter data based on time range
   const filteredData = useMemo(() => {
@@ -112,35 +123,56 @@ export default function Report({ setOpenMenu }) {
     const { tasks: filteredTasks, attendance: filteredAttendance } = filteredData;
     
     const completedTasks = filteredTasks.filter(t => t.status === 'done');
+    const inProgressTasks = filteredTasks.filter(t => t.status === 'in_progress');
+    const pendingTasks = filteredTasks.filter(t => t.status === 'pending');
     const droppedTasks = filteredTasks.filter(t => t.status === 'reassigned');
     
     const workingDays = filteredAttendance.filter(a => !a.isWeekend);
     const presentDays = workingDays.filter(a => a.present);
     const leaveDays = workingDays.length - presentDays.length;
     
-    const completionRate = filteredTasks.length > 0 ? (completedTasks.length / filteredTasks.length) * 100 : 0;
-    const attendanceRate = workingDays.length > 0 ? (presentDays.length / workingDays.length) * 100 : 0;
+    const totalTasks = filteredTasks.length || 1;
+    const workingDaysCount = workingDays.length || 1;
     
-    const performanceScore = Math.round((completionRate * 0.6) + (attendanceRate * 0.4));
+    // Weighted performance scoring:
+    // Completed: +40%, In Progress: +10%, Pending: -20%, Reassigned: -20%, Attendance: +10%
+    const completedScore = (completedTasks.length / totalTasks) * 40;
+    const inProgressScore = (inProgressTasks.length / totalTasks) * 10;
+    const pendingScore = (pendingTasks.length / totalTasks) * (-20);
+    const reassignedScore = (droppedTasks.length / totalTasks) * (-20);
+    const attendanceScore = (presentDays.length / workingDaysCount) * 10;
+    
+    const performanceScore = Math.min(100, Math.max(0, 
+      Math.round(completedScore + inProgressScore + pendingScore + reassignedScore + attendanceScore)
+    ));
     
     return {
-      performanceScore: Math.min(100, Math.max(0, performanceScore)),
+      performanceScore,
       completedTasks: completedTasks.length,
+      inProgressTasks: inProgressTasks.length,
+      pendingTasks: pendingTasks.length,
       droppedTasks: droppedTasks.length,
       presentDays: presentDays.length,
       leaveDays
     };
   }, [filteredData]);
 
-  // Get recent tasks
+  // Get recent tasks with stable, deterministic time estimates
   const recentTasks = useMemo(() => {
     return [...filteredData.tasks]
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-      .slice(0, 5);
+      .slice(0, 5)
+      .map((task) => {
+        const createdAtMs = new Date(task.createdAt).getTime() || 0;
+        const taskIdValue = Number(task.id) || 0;
+        const timeTaken = 1 + Math.abs((createdAtMs + taskIdValue) % 4);
+        return { ...task, timeTaken };
+      });
   }, [filteredData.tasks]);
 
   return (
-    <div className="performance-dashboard">
+    <RefreshWrapper onRefresh={handleReportRefresh}>
+      <div className="performance-dashboard">
       {/* Header */}
       <div className="report-header">
         <button className="menu-btn" onClick={() => setOpenMenu(true)}>
@@ -220,6 +252,22 @@ export default function Report({ setOpenMenu }) {
           <div className="stat-label">Tasks Completed</div>
         </div>
 
+        <div className="stat-card in-progress">
+          <div className="stat-icon">
+            <i className="fas fa-spinner"></i>
+          </div>
+          <div className="stat-number">{performanceMetrics.inProgressTasks}</div>
+          <div className="stat-label">In Progress</div>
+        </div>
+
+        <div className="stat-card pending">
+          <div className="stat-icon">
+            <i className="fas fa-clock"></i>
+          </div>
+          <div className="stat-number">{performanceMetrics.pendingTasks}</div>
+          <div className="stat-label">Pending Tasks</div>
+        </div>
+
         <div className="stat-card dropped">
           <div className="stat-icon">
             <i className="fas fa-times-circle"></i>
@@ -273,7 +321,7 @@ export default function Report({ setOpenMenu }) {
                 <div className="task-info">
                   <h4 className="task-title">{task.title}</h4>
                   <div className="task-details">
-                    <span className="task-time">Time taken: {Math.floor(Math.random() * 4) + 1} hrs</span>
+                    <span className="task-time">Time taken: {task.timeTaken} hrs</span>
                     <span className="task-date">Date: {new Date(task.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
                   </div>
                 </div>
@@ -293,8 +341,18 @@ export default function Report({ setOpenMenu }) {
           <i className="fas fa-lightbulb"></i>
         </div>
         <div className="insight-content">
-          <h4 className="insight-title">Productivity Insight</h4>
-          <p className="insight-text">Great job! Your performance is consistently above average. Keep up the excellent work!</p>
+          <h4 className="insight-title">
+            {performanceMetrics.performanceScore >= 80 ? 'Excellent Performance! 🌟' : 
+             performanceMetrics.performanceScore >= 60 ? 'Good Progress 👍' : 
+             performanceMetrics.performanceScore >= 40 ? 'Keep Improving 💪' : 
+             'Needs Attention ⚠️'}
+          </h4>
+          <p className="insight-text">
+            {performanceMetrics.performanceScore >= 80 ? 'Outstanding work! Your completion rate and attendance are excellent. Keep maintaining this momentum!' : 
+             performanceMetrics.performanceScore >= 60 ? 'You\'re doing well! Focus on completing pending tasks and maintaining consistent attendance.' : 
+             performanceMetrics.performanceScore >= 40 ? 'There\'s room for improvement. Try to complete more tasks and reduce pending items in your queue.' : 
+             'Your performance needs attention. Work on clearing pending tasks and increasing your completion rate.'}
+          </p>
         </div>
       </div>
 
@@ -528,7 +586,7 @@ export default function Report({ setOpenMenu }) {
         /* Stats Grid */
         .stats-grid {
           display: grid;
-          grid-template-columns: repeat(2, 1fr);
+          grid-template-columns: repeat(3, 1fr);
           gap: 16px;
           margin-bottom: 32px;
         }
@@ -584,6 +642,14 @@ export default function Report({ setOpenMenu }) {
 
         .stat-card.completed .stat-icon {
           background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        }
+
+        .stat-card.in-progress .stat-icon {
+          background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+        }
+
+        .stat-card.pending .stat-icon {
+          background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
         }
 
         .stat-card.dropped .stat-icon {
@@ -940,6 +1006,7 @@ export default function Report({ setOpenMenu }) {
 
           .stats-grid {
             gap: 12px;
+            grid-template-columns: repeat(2, 1fr);
           }
 
           .stat-card {
@@ -966,5 +1033,6 @@ export default function Report({ setOpenMenu }) {
         }
       `}</style>
     </div>
+  </RefreshWrapper>
   );
 }

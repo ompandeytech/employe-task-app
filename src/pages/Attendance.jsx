@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { API_BASE, getAuthHeaders } from "../utils/apiConfig";
+import RefreshWrapper from "../components/RefreshWrapper";
 import "./Attendance.css";
 
 const getUser = () => JSON.parse(localStorage.getItem("user") || "{}");
@@ -35,6 +36,23 @@ const formatTime = (value) => {
   const formattedHours = h % 12 || 12;
 
   return `${formattedHours}:${minutes} ${ampm}`;
+};
+
+const getLunchDurationMinutes = (entry) => {
+  if (!entry?.lunch_in || !entry?.lunch_out) return null;
+  const start = new Date(entry.lunch_in);
+  const end = new Date(entry.lunch_out);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+  const diffMinutes = (end.getTime() - start.getTime()) / 60000;
+  if (!Number.isFinite(diffMinutes) || diffMinutes < 0) return null;
+  return Math.round(diffMinutes);
+};
+
+const formatLiveDuration = (seconds) => {
+  const minutes = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  const paddedSeconds = String(secs).padStart(2, "0");
+  return `${minutes}m ${paddedSeconds}s`;
 };
 
 const getCurrentTime = () => {
@@ -85,8 +103,11 @@ export default function Attendance() {
   const userName = user?.name || "Employee";
 
   const [time, setTime] = useState(new Date());
-  const [lunchStart, setLunchStart] = useState("13:00");
-  const [lunchEnd, setLunchEnd] = useState("13:45");
+  const [lunchActive, setLunchActive] = useState(false);
+  const [lunchStartTime, setLunchStartTime] = useState(null);
+  const [lunchEndTime, setLunchEndTime] = useState(null);
+  const [liveTimer, setLiveTimer] = useState(0);
+  const [lunchSaving, setLunchSaving] = useState(false);
   const [leaveReason, setLeaveReason] = useState("");
   const [history, setHistory] = useState([]);
   const [todayAttendance, setTodayAttendance] = useState(null);
@@ -107,6 +128,7 @@ export default function Attendance() {
   const [punchHint, setPunchHint] = useState("");
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
+  const lunchTimerRef = useRef(null);
   const handleBack = () => {
     if (window.history.length > 1) {
       navigate(-1);
@@ -234,6 +256,50 @@ export default function Attendance() {
     loadEmployeeHistory();
   }, [userId, loadTodayAttendance, loadEmployeeHistory]);
 
+  const refreshAttendanceData = useCallback(async () => {
+    await Promise.all([
+      loadTodayAttendance(),
+      loadEmployeeHistory({ showLoading: false }),
+    ]);
+  }, [loadTodayAttendance, loadEmployeeHistory]);
+
+  useEffect(() => {
+    if (!todayAttendance) {
+      setLunchActive(false);
+      setLunchStartTime(null);
+      setLunchEndTime(null);
+      return;
+    }
+    const start = todayAttendance.lunch_in || null;
+    const end = todayAttendance.lunch_out || null;
+    setLunchStartTime(start);
+    setLunchEndTime(end);
+    setLunchActive(Boolean(start && !end));
+  }, [todayAttendance]);
+
+  useEffect(() => {
+    if (lunchActive && lunchStartTime) {
+      const startMs = new Date(lunchStartTime).getTime();
+      const updateTimer = () => {
+        const diffSeconds = Math.floor((Date.now() - startMs) / 1000);
+        setLiveTimer(diffSeconds >= 0 ? diffSeconds : 0);
+      };
+      updateTimer();
+      if (lunchTimerRef.current) {
+        clearInterval(lunchTimerRef.current);
+      }
+      lunchTimerRef.current = setInterval(updateTimer, 1000);
+      return () => {
+        if (lunchTimerRef.current) {
+          clearInterval(lunchTimerRef.current);
+          lunchTimerRef.current = null;
+        }
+      };
+    }
+    setLiveTimer(0);
+    return undefined;
+  }, [lunchActive, lunchStartTime]);
+
   useEffect(() => {
     const fallbackTimer = setTimeout(() => {
       setLoading(false);
@@ -324,61 +390,60 @@ export default function Attendance() {
     }
   }, [modalOpen, cameraStream, stopCameraTracks]);
 
-    const startCameraStream = async (mode = "user") => {
-      console.log("Camera start");
-      if (!navigator.mediaDevices?.getUserMedia) {
-        const unsupportedMessage =
-          "Camera not supported on this device. Please use a modern browser.";
-        setCameraStream(null);
-        setCameraError(unsupportedMessage);
-        console.log("Camera failed", unsupportedMessage);
+  const startCameraStream = async (mode = "user") => {
+    console.log("Camera start");
+    if (!navigator.mediaDevices?.getUserMedia) {
+      const unsupportedMessage =
+        "Camera not supported on this device. Please use a modern browser.";
+      setCameraStream(null);
+      setCameraError(unsupportedMessage);
+      console.log("Camera failed", unsupportedMessage);
+      return null;
+    }
+    setCameraLoading(true);
+    stopCameraTracks();
+
+    const permissionDeniedNames = ["NotAllowedError", "PermissionDeniedError"];
+    const handleCameraFailure = (error) => {
+      const permissionDenied = permissionDeniedNames.includes(error?.name);
+      const message = permissionDenied
+        ? error?.message || "Camera permission denied. Please allow camera access to continue."
+        : error?.message || "Unable to access the camera. Please try again.";
+      setCameraStream(null);
+      setCameraError(message);
+      console.log("Camera failed", message);
+    };
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: mode,
+        },
+      });
+      setCameraStream(stream);
+      setCameraError("");
+      console.log("Camera success");
+      return stream;
+    } catch (primaryError) {
+      if (permissionDeniedNames.includes(primaryError?.name)) {
+        handleCameraFailure(primaryError);
         return null;
       }
-      setCameraLoading(true);
-      stopCameraTracks();
-
-      const permissionDeniedNames = ["NotAllowedError", "PermissionDeniedError"];
-      const handleCameraFailure = (error) => {
-        const permissionDenied = permissionDeniedNames.includes(error?.name);
-        const message = permissionDenied
-          ? error?.message ||
-            "Camera permission denied. Please allow camera access to continue."
-          : error?.message || "Unable to access the camera. Please try again.";
-        setCameraStream(null);
-        setCameraError(message);
-        console.log("Camera failed", message);
-      };
-
+      console.debug("Preferred camera not available, trying fallback", primaryError);
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: mode,
-          },
-        });
-        setCameraStream(stream);
+        const fallbackStream = await navigator.mediaDevices.getUserMedia({ video: true });
+        setCameraStream(fallbackStream);
         setCameraError("");
         console.log("Camera success");
-        return stream;
-      } catch (primaryError) {
-        if (permissionDeniedNames.includes(primaryError?.name)) {
-          handleCameraFailure(primaryError);
-          return null;
-        }
-        console.debug("Preferred camera not available, trying fallback", primaryError);
-        try {
-          const fallbackStream = await navigator.mediaDevices.getUserMedia({ video: true });
-          setCameraStream(fallbackStream);
-          setCameraError("");
-          console.log("Camera success");
-          return fallbackStream;
-        } catch (fallbackError) {
-          handleCameraFailure(fallbackError);
-          return null;
-        }
-      } finally {
-        setCameraLoading(false);
+        return fallbackStream;
+      } catch (fallbackError) {
+        handleCameraFailure(fallbackError);
+        return null;
       }
-    };
+    } finally {
+      setCameraLoading(false);
+    }
+  };
 
   const handleSwitchCamera = async () => {
     if (cameraLoading) return;
@@ -397,58 +462,81 @@ export default function Attendance() {
     cleanupCamera();
   };
 
-    const sendLunchPunch = async (lunchType, lunchTime) => {
-      if (!userId) {
-        setError("User not logged in properly");
-        return;
-      }
-      if (!lunchTime) {
-        setError("Please select a lunch time before saving.");
-        return;
-      }
+  const sendLunchPunch = async (lunchType, lunchTime) => {
+    if (!userId) {
+      setError("User not logged in properly");
+      return false;
+    }
+    setError("");
+    setStatusMessage("");
 
-      setError("");
-      setStatusMessage("");
+    try {
+      const payload = {
+        employee_id: userId,
+        employee_name: userName,
+        type: lunchType,
+        date: todayIso,
+        ...(lunchType === "lunch_in" ? { lunch_in: lunchTime } : { lunch_out: lunchTime }),
+      };
+      await axios.post(`${API_BASE}/attendance/punch`, payload, {
+        headers: getAuthHeaders(),
+      });
+      setStatusMessage("Lunch time recorded successfully.");
+      await loadTodayAttendance();
+      await loadEmployeeHistory({ showLoading: false });
+      return true;
+    } catch (err) {
+      console.error(`Failed to record ${lunchType}:`, err);
+      const message = err.response?.data?.error || err.message || "Unknown error";
+      setError(`Failed to record lunch time: ${message}`);
+      return false;
+    }
+  };
 
-      try {
-        const payload = {
-          employee_id: userId,
-          employee_name: userName,
-          type: lunchType,
-          date: todayIso,
-          ...(lunchType === "lunch_in"
-            ? { lunch_in: lunchTime }
-            : { lunch_out: lunchTime }),
-        };
-        await axios.post(`${API_BASE}/attendance/punch`, payload, {
-          headers: getAuthHeaders(),
-        });
-        setStatusMessage("Lunch time recorded successfully.");
-        await loadTodayAttendance();
-        await loadEmployeeHistory({ showLoading: false });
-      } catch (err) {
-        console.error(`Failed to record ${lunchType}:`, err);
-        const message = err.response?.data?.error || err.message || "Unknown error";
-        setError(`Failed to record lunch time: ${message}`);
+  const handleLunchToggle = async () => {
+    if (lunchSaving) return;
+    const type = lunchActive ? "lunch_out" : "lunch_in";
+    const now = new Date();
+    const iso = now.toISOString();
+    const formattedTime = now.toTimeString().slice(0, 5);
+    setLunchSaving(true);
+    if (type === "lunch_in") {
+      setLunchActive(true);
+      setLunchStartTime(iso);
+    }
+
+    const success = await sendLunchPunch(type, formattedTime);
+    if (success) {
+      if (type === "lunch_out") {
+        setLunchActive(false);
+        setLunchEndTime(iso);
+      } else {
+        setLunchEndTime(null);
       }
-    };
+    } else if (type === "lunch_in") {
+      setLunchActive(false);
+      setLunchStartTime(null);
+    }
+    setLunchSaving(false);
+  };
 
-    const sendPunchWithPhoto = async (type, coords, photo) => {
+  const sendPunchWithPhoto = async (type, coords, photo) => {
     if (!coords || !photo) return;
     setStatusMessage("");
     setError("");
     setSaving(true);
     try {
       console.log("Submitting punch type:", type);
+      const currentTime = getCurrentTime();
       const payload = {
         employee_id: userId,
         employee_name: userName,
         type,
         date: todayIso,
-        in_time: type === "checkin" ? getCurrentTime() : undefined,
-        out_time: type === "checkout" ? getCurrentTime() : undefined,
-        lunch_in: lunchStart,
-        lunch_out: lunchEnd,
+        in_time: type === "checkin" ? currentTime : undefined,
+        out_time: type === "checkout" ? currentTime : undefined,
+        lunch_in: type === "lunch_in" ? currentTime : lunchStartTime,
+        lunch_out: type === "lunch_out" ? currentTime : lunchEndTime,
         latitude: coords.lat,
         longitude: coords.lng,
         photo,
@@ -474,6 +562,14 @@ export default function Attendance() {
         });
         await loadTodayAttendance();
         await loadEmployeeHistory({ showLoading: false });
+      }
+      if (type === "lunch_in") {
+        setLunchActive(true);
+        setLunchStartTime(currentTime);
+        setLunchEndTime(null);
+      } else if (type === "lunch_out") {
+        setLunchActive(false);
+        setLunchEndTime(currentTime);
       }
     } catch (err) {
       console.error("Punch request failed:", err);
@@ -629,7 +725,8 @@ export default function Attendance() {
   };
 
   return (
-    <div className="attendance-page">
+    <RefreshWrapper onRefresh={refreshAttendanceData}>
+      <div className="attendance-page">
       <header className="att-header">
         <button
           type="button"
@@ -698,91 +795,77 @@ export default function Attendance() {
         </p>
       </div>
 
-        <div className="report-box">
-          <h3>Select Lunch Time</h3>
-          <div className="lunch-row">
-            <div>
-              <label>Lunch Start</label>
-              <div
-                style={{
-                  marginTop: 4,
-                  display: "flex",
-                  gap: 8,
-                  alignItems: "center",
-                }}
-              >
-                <input type="time" value={lunchStart} onChange={(e) => setLunchStart(e.target.value)} />
-                <button
-                  type="button"
-                  onClick={() => sendLunchPunch("lunch_in", lunchStart)}
-                  disabled={saving}
-                >
-                  Set Lunch In
-                </button>
-              </div>
-            </div>
-            <div>
-              <label>Lunch End</label>
-              <div
-                style={{
-                  marginTop: 4,
-                  display: "flex",
-                  gap: 8,
-                  alignItems: "center",
-                }}
-              >
-                <input type="time" value={lunchEnd} onChange={(e) => setLunchEnd(e.target.value)} />
-                <button
-                  type="button"
-                  onClick={() => sendLunchPunch("lunch_out", lunchEnd)}
-                  disabled={saving}
-                >
-                  Set Lunch Out
-                </button>
-              </div>
-            </div>
-          </div>
+      <div className="report-box lunch-tracker">
+        <h3>Track Lunch</h3>
+        <div className="lunch-action">
+          <button
+            type="button"
+            className={`lunch-toggle-btn ${lunchActive ? "lunch-out" : "lunch-in"}`}
+            onClick={handleLunchToggle}
+            disabled={lunchSaving || saving || preparingPunch}
+          >
+            {lunchActive ? "Lunch Out" : "Lunch In"}
+          </button>
         </div>
+        {lunchActive && lunchStartTime && (
+          <>
+            <p className="lunch-status">Lunch started at {formatTime(lunchStartTime)}...</p>
+            <p className="lunch-status timer">Running timer: {formatLiveDuration(liveTimer)}</p>
+          </>
+        )}
+        {!lunchActive && lunchStartTime && lunchEndTime && (
+          <p className="lunch-status secondary">
+            Last session {formatTime(lunchStartTime)} - finished at {formatTime(lunchEndTime)}.
+          </p>
+        )}
+      </div>
 
       <div className="history-section">
         <h3>Attendance History</h3>
         {history.length === 0 ? <p>No attendance records.</p> : null}
-        {history.map((item) => (
-          <div className="history-card" key={item.id}>
-            <div className="history-top">
-              <strong>{formatDate(item.date)}</strong>
-              <span className={`badge ${String(item.status).toLowerCase()}`}>{item.status}</span>
-            </div>
+        {history.map((item) => {
+          const durationMinutes = getLunchDurationMinutes(item);
+          return (
+            <div className="history-card" key={item.id}>
+              <div className="history-top">
+                <strong>{formatDate(item.date)}</strong>
+                <span className={`badge ${String(item.status).toLowerCase()}`}>{item.status}</span>
+              </div>
 
-            <p>
-              <b>Name:</b> {item.employee_name || userName}
-            </p>
-
-            {String(item.status).toLowerCase() === "present" ? (
-              <>
-                <p>
-                  <b>Check In:</b> {formatTime(item.in_time)}
-                </p>
-                <p>
-                  <b>Check Out:</b> {formatTime(item.out_time)}
-                </p>
-                <p>
-                  <b>Lunch In:</b> {formatTime(item.lunch_in)}
-                </p>
-                <p>
-                  <b>Lunch Out:</b> {formatTime(item.lunch_out)}
-                </p>
-                <p>
-                  <b>Remarks:</b> {item.remarks || "-"}
-                </p>
-              </>
-            ) : (
               <p>
-                <b>Leave Reason:</b> {item.remarks || "-"}
+                <b>Name:</b> {item.employee_name || userName}
               </p>
-            )}
-          </div>
-        ))}
+
+              {String(item.status).toLowerCase() === "present" ? (
+                <>
+                  <p>
+                    <b>Check In:</b> {formatTime(item.in_time)}
+                  </p>
+                  <p>
+                    <b>Check Out:</b> {formatTime(item.out_time)}
+                  </p>
+                  <p>
+                    <b>Lunch In:</b> {formatTime(item.lunch_in)}
+                  </p>
+                  <p>
+                    <b>Lunch Out:</b> {formatTime(item.lunch_out)}
+                  </p>
+                  <p>
+                    <b>Lunch Duration:</b>{" "}
+                    {durationMinutes !== null ? `${durationMinutes} min` : "-"}
+                  </p>
+                  <p>
+                    <b>Remarks:</b> {item.remarks || "-"}
+                  </p>
+                </>
+              ) : (
+                <p>
+                  <b>Leave Reason:</b> {item.remarks || "-"}
+                </p>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       <div className="report-box">
@@ -848,5 +931,6 @@ export default function Attendance() {
         </div>
       )}
     </div>
+  </RefreshWrapper>
   );
 }

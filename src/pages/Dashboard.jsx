@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTaskContext } from "../context/taskContextStore";
 import NotificationBell from "../components/NotificationBell";
+import RefreshWrapper from "../components/RefreshWrapper";
 
 export default function Dashboard({ setOpenMenu }) {
   const navigate = useNavigate();
-  const { getTasksByStatus, getTodayTasks } = useTaskContext();
+  const { getTasksByStatus, getTodayTasks, refreshTasks } = useTaskContext();
   const user = JSON.parse(localStorage.getItem("user") || "{}");
   const userName = user?.name || "User";
   
@@ -25,8 +26,14 @@ export default function Dashboard({ setOpenMenu }) {
     todo: todoTasks.length
   };
 
+  const handleDashboardRefresh = useCallback(async () => {
+    if (!refreshTasks) return;
+    await refreshTasks();
+  }, [refreshTasks]);
+
   return (
-    <div className="home-screen">
+    <RefreshWrapper onRefresh={handleDashboardRefresh}>
+      <div className="home-screen">
       {/* Top Navbar */}
       <div className="top-navbar">
         <button className="menu-icon" onClick={() => setOpenMenu(true)}>
@@ -465,5 +472,6 @@ export default function Dashboard({ setOpenMenu }) {
         }
       `}</style>
     </div>
+  </RefreshWrapper>
   );
 }

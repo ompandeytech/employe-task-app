@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import NotificationBell from "../components/NotificationBell";
 import { useNotificationContext } from "../context/NotificationContext";
+import RefreshWrapper from "../components/RefreshWrapper";
 
 const sanitizeProfileData = (user) => {
   if (!user) return null;
@@ -80,6 +81,12 @@ export default function Profile({ setOpenMenu }) {
     return () => clearInterval(interval);
   }, []);
 
+  const handleProfileRefresh = useCallback(() => {
+    const stored = getStoredProfile() || defaultProfile;
+    setProfile(stored);
+    setTempProfile(stored);
+  }, []);
+
   // Handle profile image upload
   const handleImageChange = (e) => {
     const file = e.target.files[0];
@@ -142,7 +149,8 @@ export default function Profile({ setOpenMenu }) {
   const displayTempProfile = tempProfile || {};
 
   return (
-    <div className="profile-dashboard">
+    <RefreshWrapper onRefresh={handleProfileRefresh}>
+      <div className="profile-dashboard">
       {/* Header */}
       <div className="profile-header">
         <button className="menu-btn" onClick={() => setOpenMenu(true)}>
@@ -1015,5 +1023,6 @@ export default function Profile({ setOpenMenu }) {
         }
       `}</style>
     </div>
+  </RefreshWrapper>
   );
 }

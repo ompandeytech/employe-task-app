@@ -1293,18 +1293,6 @@ background: linear-gradient(135deg, #ff9c23, #ffd182);
   background: red;
 }
 
-.lunch-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.lunch-row input {
-  padding: 6px;
-  border-radius: 8px;
-  border: 1px solid #ddd;
-}
-
 textarea {
   width: 100%;
   min-height: 70px;
@@ -1483,4 +1471,24 @@ textarea {
   display:flex;
   align-items:center;
   gap:12px;
+}
+
+.refresh-wrapper {
+  width: 100%;
+  min-height: 100vh;
+  touch-action: pan-y;
+  overflow: hidden;
+}
+
+.ptr,
+.ptr__children {
+  min-height: 100vh;
+}
+
+.refresh-text {
+  font-size: 0.85rem;
+  color: #475569;
+  display: block;
+  padding: 8px 0;
+  text-align: center;
 }

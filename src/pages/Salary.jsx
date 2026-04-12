@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { API_BASE, getAuthHeaders } from "../utils/apiConfig";
+import RefreshWrapper from "../components/RefreshWrapper";
 
 const getUserId = () => {
   const user = JSON.parse(localStorage.getItem("user") || "{}");
@@ -37,11 +38,20 @@ export default function Salary() {
     navigate("/");
   };
 
-  useEffect(() => {
-    const loadSalaryData = async () => {
+  const loadSalaryData = useCallback(
+    async ({ showLoader = false } = {}) => {
+      if (showLoader) {
+        setLoading(true);
+      }
+      setError("");
+
       if (!userId) {
         setError("Employee not logged in.");
-        setLoading(false);
+        setSalaryRows([]);
+        setHistoryRows([]);
+        if (showLoader) {
+          setLoading(false);
+        }
         return;
       }
 
@@ -50,8 +60,6 @@ export default function Salary() {
           headers: getAuthHeaders(),
         });
         const salaryPayload = Array.isArray(salaryRes.data) ? salaryRes.data : [];
-        console.log("User ID:", userId);
-        console.log("Salary Data:", salaryPayload);
         const employeeSalaries = salaryPayload.filter((item) => String(item.employee_id) === String(userId));
         setSalaryRows(employeeSalaries);
 
@@ -66,14 +74,25 @@ export default function Salary() {
         }));
         setHistoryRows(fallbackHistory);
       } catch {
+        setSalaryRows([]);
+        setHistoryRows([]);
         setError("Failed to load salary data.");
       } finally {
-        setLoading(false);
+        if (showLoader) {
+          setLoading(false);
+        }
       }
-    };
+    },
+    [userId]
+  );
 
-    loadSalaryData();
-  }, [userId]);
+  useEffect(() => {
+    loadSalaryData({ showLoader: true });
+  }, [loadSalaryData]);
+
+  const handleSalaryRefresh = useCallback(async () => {
+    await loadSalaryData();
+  }, [loadSalaryData]);
 
   const summary = useMemo(() => {
     const total = salaryRows.reduce((sum, row) => sum + toNumber(row.net_pay), 0);
@@ -87,7 +106,8 @@ export default function Salary() {
   if (error) return <p style={{ padding: 16, color: "#dc2626" }}>{error}</p>;
 
   return (
-    <div style={{ padding: 16, paddingBottom: 90 }}>
+    <RefreshWrapper onRefresh={handleSalaryRefresh}>
+      <div style={{ padding: 16, paddingBottom: 90 }}>
       <button
         type="button"
         onClick={handleBack}
@@ -198,5 +218,6 @@ export default function Salary() {
         </>
       )}
     </div>
+  </RefreshWrapper>
   );
 }

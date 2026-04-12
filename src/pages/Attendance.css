@@ -170,68 +170,68 @@
   margin: 1.75rem 0;
 }
 
-.lunch-row {
+.lunch-tracker {
+  text-align: center;
+}
+
+.lunch-tracker .lunch-action {
+  margin-top: 1.25rem;
   display: flex;
-  gap: 1rem;
-  flex-wrap: wrap;
+  justify-content: center;
 }
 
-.lunch-row > div {
-  flex: 1;
-  min-width: 220px;
-}
-
-.lunch-row label {
-  font-weight: 600;
-  display: block;
-  margin-bottom: 0.35rem;
-}
-
-.lunch-row input[type="time"] {
-  width: 100%;
-  padding: 0.55rem 0.75rem;
-  border-radius: 10px;
-  border: 1px solid #cbd5f5;
-  background: #f9fafb;
-  font-size: 0.95rem;
-}
-
-.lunch-row button {
-  width: 100%;
-  margin-top: 0.4rem;
-  padding: 0.65rem 0.75rem;
-  border-radius: 12px;
+.lunch-toggle-btn {
+  aspect-ratio: 1 / 1;
+  width: min(220px, 70vw);
+  border-radius: 999px;
   border: none;
-  font-size: 0.95rem;
-  font-weight: 600;
+  outline: none;
+  font-weight: 700;
+  font-size: 1.05rem;
   color: #fff;
-  background: linear-gradient(135deg, #2563eb, #0ea5e9);
   cursor: pointer;
-  box-shadow: 0 10px 18px rgba(37, 99, 235, 0.3);
+  box-shadow: 0 25px 40px rgba(15, 23, 42, 0.3);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
 }
 
-.lunch-row button:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 12px 24px rgba(37, 99, 235, 0.35);
+.lunch-toggle-btn.lunch-in {
+  background: #16a34a;
 }
 
-.lunch-row button:disabled {
-  background: #94a3b8;
+.lunch-toggle-btn.lunch-out {
+  background: #dc2626;
+}
+
+.lunch-toggle-btn:hover:not(:disabled) {
+  transform: translateY(-3px);
+  box-shadow: 0 30px 45px rgba(15, 23, 42, 0.35);
+}
+
+.lunch-toggle-btn:disabled {
+  opacity: 0.65;
   cursor: not-allowed;
   box-shadow: none;
 }
 
-@media (max-width: 480px) {
-  .lunch-row {
-    flex-direction: column;
-  }
+.lunch-status {
+  margin: 0.6rem 0 0;
+  font-size: 0.95rem;
+  color: #0f172a;
+  font-weight: 600;
+}
 
-  .lunch-row > div {
-    min-width: 100%;
-  }
+.lunch-status.secondary {
+  color: #475569;
+  font-weight: 500;
+}
 
-  .lunch-row button {
-    margin-top: 0.6rem;
-  }
+.lunch-status.timer {
+  font-size: 0.9rem;
+  color: #059669;
+  font-weight: 500;
+  margin-top: 0.35rem;
 }

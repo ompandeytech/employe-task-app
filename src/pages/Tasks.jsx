@@ -1,8 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTaskContext } from "../context/taskContextStore";
 import axios from "axios";
 import { API_BASE, getAuthHeaders } from "../utils/apiConfig";
+import TaskCard from "../components/TaskCard";
+import { fetchTaskNotes } from "../utils/taskNotes";
+import RefreshWrapper from "../components/RefreshWrapper";
+import Select from "react-select";
 
 /**
  * @typedef {'done'|'in-progress'|'pending'|'reassign'|'note-add'|'note-view'|''} ModalType
@@ -35,13 +39,6 @@ const resolveCurrentUserInfo = () => {
   return { id, name };
 };
 
-const normalizeNotesResponse = (payload) => {
-  if (!payload) return [];
-  if (Array.isArray(payload)) return payload;
-  if (Array.isArray(payload.data)) return payload.data;
-  if (Array.isArray(payload.notes)) return payload.notes;
-  return [];
-};
 
 export default function Tasks() {
   const navigate = useNavigate();
@@ -50,14 +47,13 @@ export default function Tasks() {
   const [modalType, setModalType] = useState(/** @type {ModalType} */ (''));
   const [selectedTask, setSelectedTask] = useState(null);
   const [pendingReason, setPendingReason] = useState('');
-  const [reassignEmployee, setReassignEmployee] = useState('');
+  const [reassignEmployee, setReassignEmployee] = useState(null);
   const [reassignReason, setReassignReason] = useState('');
   const [inProgressPercent, setInProgressPercent] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [pullDistance, setPullDistance] = useState(0);
-  const touchStartY = useRef(0);
   const [noteText, setNoteText] = useState('');
   const [notesList, setNotesList] = useState([]);
+  const [employees, setEmployees] = useState([]);
   const [noteLoading, setNoteLoading] = useState(false);
   const [noteSaving, setNoteSaving] = useState(false);
   const [noteError, setNoteError] = useState('');
@@ -66,56 +62,40 @@ export default function Tasks() {
 
   // Show all active (not done) tasks on this page
   const todoTasks = getTodayTasks();
+  const menuPortalTarget = typeof document !== "undefined" ? document.body : null;
 
-  const getStatusColor = (status) => {
-    switch(status) {
-      case 'done': return '#10b981';
-      case 'pending': return '#f97316';
-      case 'inprogress':
-      case 'in_progress': return '#3b82f6';
-      case 'reassigned': return '#8b5cf6';
-      default: return '#6b7280';
+
+  const loadEmployees = useCallback(async () => {
+    try {
+      const response = await axios.get(`${API_BASE}/users`, {
+        headers: getAuthHeaders(),
+      });
+      const data = Array.isArray(response.data) ? response.data : [];
+      setEmployees(data);
+      console.log("EMPLOYEES:", data);
+    } catch (err) {
+      console.error("Failed to load employees for reassignment:", err);
+      setEmployees([]);
     }
-  };
+  }, []);
 
-  const getStatusText = (status) => {
-    switch(status) {
-      case 'done': return 'Completed';
-      case 'pending': return 'Pending';
-      case 'inprogress':
-      case 'in_progress': return 'In Progress';
-      case 'reassigned': return 'Reassigned';
-      default: return 'To Do';
-    }
-  };
-
-  const handleRefresh = async () => {
+  const handleRefresh = useCallback(async () => {
     if (isRefreshing) return;
     setIsRefreshing(true);
-    await refreshTasks();
-    setIsRefreshing(false);
-  };
-
-  const handleTouchStart = (e) => {
-    if (window.scrollY > 0) return;
-    touchStartY.current = e.touches[0].clientY;
-  };
-
-  const handleTouchMove = (e) => {
-    if (window.scrollY > 0 || !touchStartY.current) return;
-    const diff = e.touches[0].clientY - touchStartY.current;
-    if (diff > 0) {
-      setPullDistance(Math.min(diff, 80));
+    try {
+      await refreshTasks();
+    } finally {
+      setIsRefreshing(false);
     }
-  };
+  }, [isRefreshing, refreshTasks]);
 
-  const handleTouchEnd = async () => {
-    if (pullDistance > 60) {
-      await handleRefresh();
-    }
-    setPullDistance(0);
-    touchStartY.current = 0;
-  };
+  useEffect(() => {
+    loadEmployees();
+  }, [loadEmployees]);
+
+  useEffect(() => {
+    console.log("EMPLOYEES:", employees);
+  }, [employees]);
 
   useEffect(() => {
     return () => {
@@ -149,15 +129,52 @@ export default function Tasks() {
     });
   };
 
-  const fetchTaskNotes = async (taskId) => {
+  const employeeOptions = useMemo(() => {
+    return employees
+      .map((emp) => {
+        const rawId = emp?.id ?? emp?.employee_id;
+        if (rawId == null) return null;
+        return {
+          value: rawId,
+          label: emp?.name ?? emp?.employee_name ?? emp?.username ?? "No Name",
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [employees]);
+
+  const selectStyles = useMemo(
+    () => ({
+      menuPortal: (base) => ({ ...base, zIndex: 4000 }),
+    }),
+    []
+  );
+
+  const selectedEmployeeOption = useMemo(() => {
+    if (reassignEmployee == null) return null;
+    const exactMatch = employeeOptions.find((opt) => opt.value === reassignEmployee);
+    if (exactMatch) return exactMatch;
+    const selectedNumeric = Number(reassignEmployee);
+    return (
+      employeeOptions.find((opt) => {
+        const optionNumeric = Number(opt.value);
+        return (
+          !Number.isNaN(optionNumeric) &&
+          !Number.isNaN(selectedNumeric) &&
+          optionNumeric === selectedNumeric
+        );
+      }) ?? null
+    );
+  }, [employeeOptions, reassignEmployee]);
+
+  const loadTaskNotes = async (taskId) => {
     if (!taskId) return;
     setNoteLoading(true);
     setNoteError('');
+    setNotesList([]);
     try {
-      const response = await axios.get(`${API_BASE}/tasks/${taskId}/notes`, {
-        headers: getAuthHeaders(),
-      });
-      setNotesList(normalizeNotesResponse(response.data));
+      const notes = await fetchTaskNotes(taskId);
+      setNotesList(notes);
     } catch (err) {
       console.error("Failed to load task notes:", err);
       const message = err.response?.data?.error || err.message || "Unable to load notes.";
@@ -168,23 +185,6 @@ export default function Tasks() {
     }
   };
 
-  const openAddNoteModal = (task) => {
-    setSelectedTask(task);
-    setModalType('note-add');
-    setNoteText('');
-    setNoteError('');
-    setNotesList([]);
-    setShowModal(true);
-  };
-
-  const openViewNotesModal = (task) => {
-    setSelectedTask(task);
-    setModalType('note-view');
-    setNoteError('');
-    setNotesList([]);
-    setShowModal(true);
-    fetchTaskNotes(task.id);
-  };
 
   const handleSubmitNote = async () => {
     if (!selectedTask) return;
@@ -223,18 +223,22 @@ export default function Tasks() {
     }
   };
 
-  const handleAction = (task, action) => {
+  const handleAction = async (task, action) => {
     setSelectedTask(task);
     setModalType(action);
     setShowModal(true);
     setPendingReason('');
-    setReassignEmployee('');
+    setReassignEmployee(null);
     setReassignReason('');
     setInProgressPercent(
       action === 'in-progress'
         ? String(task?.progress ?? '')
         : ''
     );
+
+    if (action === 'note-view') {
+      await loadTaskNotes(task.id);
+    }
   };
 
   const confirmAction = async () => {
@@ -268,6 +272,10 @@ export default function Tasks() {
         await updateTaskStatus(selectedTask.id, 'pending', additionalData);
         break;
       case 'reassign':
+        if (reassignEmployee == null) {
+          alert('Please select an employee to reassign the task.');
+          return;
+        }
         additionalData = { 
           reassignReason: reassignReason,
           reassignedTo: reassignEmployee,
@@ -296,21 +304,14 @@ export default function Tasks() {
   };
 
   return (
-    <div
-      className="tasks-container"
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
-    >
+    <RefreshWrapper onRefresh={handleRefresh}>
+      <div className="tasks-container">
       {/* Page Header */}
       <div className="page-header">
         <h1 className="page-title">Today's Tasks</h1>
         <button className="refresh-btn" onClick={handleRefresh} disabled={isRefreshing}>
           {isRefreshing ? "Refreshing..." : "Refresh"}
         </button>
-      </div>
-      <div className="pull-hint" style={{ height: `${pullDistance}px` }}>
-        {pullDistance > 30 ? "Release to refresh" : "Pull down to refresh"}
       </div>
       {noteStatus && <p className="note-status">{noteStatus}</p>}
 
@@ -324,74 +325,13 @@ export default function Tasks() {
           </div>
         ) : (
           todoTasks.map(task => (
-            <div 
-              key={task.id} 
-              className="task-card"
-              style={{ borderLeft: `4px solid ${getStatusColor(task.status)}` }}
-            >
-              {/* Task Content */}
-              <div className="task-content">
-                <h3 className="task-title">{task.title}</h3>
-                <p className="task-description">{task.description}</p>
-                
-                <div className="task-details">
-                  <div className="detail-item">
-                    <i className="fas fa-user"></i>
-                    <span>Assigned To: {task.assignedTo}</span>
-                  </div>
-                  <div className="detail-item">
-                    <i className="fas fa-info-circle"></i>
-                    <span>Status: {getStatusText(task.status)}</span>
-                  </div>
-                  <div className="detail-item">
-                    <i className="fas fa-chart-line"></i>
-                    <span>Progress: {task.progress ?? 0}%</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="action-buttons">
-                <button 
-                  className="action-btn done"
-                  onClick={() => handleAction(task, 'done')}
-                >
-                  <i className="fas fa-circle-check"></i>
-                  <span>Done</span>
-                </button>
-                <button 
-                  className="action-btn in-progress"
-                  onClick={() => handleAction(task, 'in-progress')}
-                >
-                  <i className="fas fa-spinner"></i>
-                  <span>In Progress</span>
-                </button>
-                <button 
-                  className="action-btn pending"
-                  onClick={() => handleAction(task, 'pending')}
-                >
-                  <i className="fas fa-clock"></i>
-                  <span>Pending</span>
-                </button>
-                <button 
-                  className="action-btn reassign"
-                  onClick={() => handleAction(task, 'reassign')}
-                >
-                  <i className="fas fa-user-pen"></i>
-                  <span>Reassign</span>
-                </button>
-              </div>
-              <div className="note-actions">
-                <button className="action-btn note" onClick={() => openAddNoteModal(task)}>
-                  <i className="fas fa-plus"></i>
-                  <span>Add Note</span>
-                </button>
-                <button className="action-btn note-view" onClick={() => openViewNotesModal(task)}>
-                  <i className="fas fa-eye"></i>
-                  <span>View Notes</span>
-                </button>
-              </div>
-            </div>
+            <TaskCard
+              key={task.id}
+              task={task}
+              onAction={handleAction}
+              showAddNote={true}
+              showViewNotes={true}
+            />
           ))
         )}
       </div>
@@ -472,13 +412,31 @@ export default function Tasks() {
                   </div>
                   <h3 className="modal-title">Reassign Task</h3>
                 <div className="modal-input">
-                  <label>Enter Employee User ID</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={reassignEmployee}
-                    onChange={(e) => setReassignEmployee(e.target.value)}
-                    placeholder="e.g. 5"
+                  <label>Select Employee</label>
+                  <Select
+                    options={employeeOptions}
+                    value={selectedEmployeeOption}
+                    onChange={(selected) => {
+                      const selectedValue = selected?.value;
+                      if (selectedValue == null) {
+                        setReassignEmployee(null);
+                        return;
+                      }
+                      const numericValue = Number(selectedValue);
+                      setReassignEmployee(
+                        Number.isFinite(numericValue) ? numericValue : selectedValue
+                      );
+                    }}
+                    className="employee-select"
+                    classNamePrefix="react-select"
+                    styles={selectStyles}
+                    placeholder="Select Employee"
+                    noOptionsMessage={() =>
+                      employeeOptions.length === 0 ? "No employees found" : "No matching employees"
+                    }
+                    isClearable
+                    menuPortalTarget={menuPortalTarget}
+                    menuPlacement="auto"
                   />
                 </div>
                 <div className="modal-input">
@@ -672,159 +630,6 @@ export default function Tasks() {
           gap: 16px;
         }
 
-        /* Task Card */
-        .task-card {
-          background: rgba(255, 255, 255, 0.95);
-          backdrop-filter: blur(10px);
-          border-radius: 20px;
-          padding: 20px;
-          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
-          transition: transform 0.2s ease, box-shadow 0.2s ease;
-        }
-
-        .task-card:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
-        }
-
-        .task-content {
-          margin-bottom: 16px;
-        }
-
-        .task-title {
-          font-size: 18px;
-          font-weight: 600;
-          color: #1e293b;
-          margin-bottom: 8px;
-        }
-
-        .task-description {
-          font-size: 14px;
-          color: #64748b;
-          line-height: 1.5;
-          margin-bottom: 12px;
-        }
-
-        .task-details {
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-          margin-bottom: 8px;
-        }
-
-        .detail-item {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          font-size: 13px;
-          color: #475569;
-        }
-
-        .detail-item i {
-          font-size: 12px;
-          color: #94a3b8;
-        }
-
-        .status-info {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 8px 12px;
-          background: rgba(0, 0, 0, 0.05);
-          border-radius: 8px;
-          font-size: 12px;
-          color: #64748b;
-        }
-
-        .status-info i {
-          font-size: 12px;
-        }
-
-        /* Action Buttons */
-          .action-buttons {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 8px;
-          }
-          .note-actions {
-            margin-top: 8px;
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 8px;
-          }
-
-        .action-btn {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 6px;
-          padding: 10px 12px;
-          border: none;
-          border-radius: 12px;
-          font-size: 12px;
-          font-weight: 500;
-          cursor: pointer;
-          transition: all 0.2s ease;
-        }
-
-        .action-btn i {
-          font-size: 14px;
-        }
-
-        .action-btn.done {
-          background: rgba(16, 185, 129, 0.1);
-          color: #10b981;
-        }
-
-        .action-btn.done:hover {
-          background: rgba(16, 185, 129, 0.2);
-        }
-
-        .action-btn.in-progress {
-          background: rgba(59, 130, 246, 0.1);
-          color: #3b82f6;
-        }
-
-        .action-btn.in-progress:hover {
-          background: rgba(59, 130, 246, 0.2);
-        }
-
-        .action-btn.pending {
-          background: rgba(249, 115, 22, 0.1);
-          color: #f97316;
-        }
-
-        .action-btn.pending:hover {
-          background: rgba(249, 115, 22, 0.2);
-        }
-
-        .action-btn.reassign {
-          background: rgba(139, 92, 246, 0.1);
-          color: #8b5cf6;
-        }
-
-          .action-btn.reassign:hover {
-            background: rgba(139, 92, 246, 0.2);
-          }
-
-          .action-btn.note {
-            background: rgba(37, 99, 235, 0.1);
-            color: #2563eb;
-          }
-
-          .action-btn.note:hover {
-            background: rgba(37, 99, 235, 0.2);
-          }
-
-          .action-btn.note-view {
-            background: rgba(14, 165, 233, 0.1);
-            color: #0ea5e9;
-          }
-
-          .action-btn.note-view:hover {
-            background: rgba(14, 165, 233, 0.2);
-          }
-
         /* Modal */
         .modal-overlay {
           position: fixed;
@@ -850,6 +655,8 @@ export default function Tasks() {
           width: 100%;
           box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
           animation: slideUp 0.3s ease;
+          max-height: 80vh;
+          overflow-y: auto;
         }
 
         .modal-icon {
@@ -1027,9 +834,27 @@ export default function Tasks() {
             background: linear-gradient(135deg, #8b5cf6, #7c3aed);
           }
 
-          .btn-confirm.note {
-            background: linear-gradient(135deg, #2563eb, #0ea5e9);
-          }
+        .btn-confirm.note {
+          background: linear-gradient(135deg, #2563eb, #0ea5e9);
+        }
+
+        .employee-select {
+          margin-top: 6px;
+        }
+
+        .react-select__control {
+          border-radius: 12px;
+          border-color: #cbd5f5;
+          min-height: 48px;
+        }
+
+        .react-select__menu {
+          z-index: 1500;
+        }
+
+        .react-select__menu-list {
+          max-height: 260px;
+        }
 
         /* Soft Bottom Navigation */
         .soft-bottom-nav {
@@ -1111,5 +936,6 @@ export default function Tasks() {
         }
       `}</style>
     </div>
+  </RefreshWrapper>
   );
 }

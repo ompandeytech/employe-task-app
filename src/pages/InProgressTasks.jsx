@@ -1,42 +1,104 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTaskContext } from "../context/taskContextStore";
+import TaskCard from "../components/TaskCard";
+import { fetchTaskNotes } from "../utils/taskNotes";
+import RefreshWrapper from "../components/RefreshWrapper";
 
-export default function InProgressTasks({ setOpenMenu }) {
+export default function InProgressTasks() {
   const navigate = useNavigate();
-  const { getTasksByStatus, updateTaskStatus } = useTaskContext();
+  const { getTasksByStatus, updateTaskStatus, refreshTasks } = useTaskContext();
   const [showModal, setShowModal] = useState(false);
+  const [modalType, setModalType] = useState('');
   const [selectedTask, setSelectedTask] = useState(null);
+  const [pendingReason, setPendingReason] = useState('');
+  const [reassignEmployee, setReassignEmployee] = useState('');
+  const [reassignReason, setReassignReason] = useState('');
+  const [notesList, setNotesList] = useState([]);
+  const [noteLoading, setNoteLoading] = useState(false);
+  const [noteError, setNoteError] = useState('');
 
   const inProgressTasks = getTasksByStatus('inprogress');
 
-  const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
+  const handleInProgressRefresh = useCallback(async () => {
+    if (!refreshTasks) return;
+    await refreshTasks();
+  }, [refreshTasks]);
 
-  const handleComplete = (task) => {
+  const handleAction = async (task, action) => {
     setSelectedTask(task);
+    setModalType(action);
     setShowModal(true);
-  };
+    setPendingReason('');
+    setReassignEmployee('');
+    setReassignReason('');
+    setNotesList([]);
+    setNoteError('');
 
-  const confirmComplete = () => {
-    if (selectedTask) {
-      updateTaskStatus(selectedTask.id, 'done', {
-        completedAt: new Date().toISOString()
-      });
-      setShowModal(false);
-      setSelectedTask(null);
+    if (action === 'note-view') {
+      setNoteLoading(true);
+      try {
+        const notes = await fetchTaskNotes(task.id);
+        setNotesList(notes);
+      } catch (err) {
+        console.error("Failed to load task notes:", err);
+        setNoteError(err.response?.data?.error || err.message || "Unable to load notes.");
+        setNotesList([]);
+      } finally {
+        setNoteLoading(false);
+      }
     }
   };
 
+  const confirmAction = async () => {
+    if (!selectedTask) return;
+
+    let additionalData = {};
+    
+    switch(modalType) {
+      case 'done':
+        additionalData = { completedAt: new Date().toISOString() };
+        await updateTaskStatus(selectedTask.id, 'done', additionalData);
+        break;
+      case 'pending':
+        additionalData = { 
+          pendingReason: pendingReason,
+          pendingAt: new Date().toISOString()
+        };
+        await updateTaskStatus(selectedTask.id, 'pending', additionalData);
+        break;
+      case 'reassign':
+        if (!reassignEmployee.trim()) {
+          alert('Please enter an employee ID to reassign the task.');
+          return;
+        }
+        additionalData = { 
+          reassignReason: reassignReason,
+          reassignedTo: reassignEmployee,
+          reassignedAt: new Date().toISOString()
+        };
+        await updateTaskStatus(selectedTask.id, 'reassigned', additionalData);
+        break;
+    }
+
+    closeModal();
+  };
+
+  const closeModal = () => {
+    setShowModal(false);
+    setSelectedTask(null);
+    setModalType('');
+    setPendingReason('');
+    setReassignEmployee('');
+    setReassignReason('');
+    setNotesList([]);
+    setNoteError('');
+  };
+
+
   return (
-    <div className="inprogress-tasks-container">
+    <RefreshWrapper onRefresh={handleInProgressRefresh}>
+      <div className="inprogress-tasks-container">
       {/* Page Header */}
       <div className="page-header">
         <h1 className="page-title">In Progress</h1>
@@ -53,87 +115,133 @@ export default function InProgressTasks({ setOpenMenu }) {
           </div>
         ) : (
           inProgressTasks.map(task => (
-            <div 
-              key={task.id} 
-              className="task-card in-progress"
-            >
-              {/* Progress Badge */}
-              <div className="progress-badge">
-                <i className="fas fa-spinner fa-spin"></i>
-                <span>IN PROGRESS</span>
-              </div>
-
-              {/* Task Content */}
-              <div className="task-content">
-                <h3 className="task-title">{task.title}</h3>
-                <p className="task-description">{task.description}</p>
-                
-                <div className="task-details">
-                  <div className="detail-item">
-                    <i className="fas fa-user"></i>
-                    <span>Assigned To: {task.assignedTo}</span>
-                  </div>
-                  <div className="detail-item">
-                    <i className="fas fa-clock"></i>
-                    <span>Started: {formatDate(task.startedAt)}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="action-buttons">
-                <button 
-                  className="action-btn complete"
-                  onClick={() => handleComplete(task)}
-                >
-                  <i className="fas fa-circle-check"></i>
-                  <span>Complete</span>
-                </button>
-                <button 
-                  className="action-btn view-details"
-                  onClick={() => {
-                    setSelectedTask(task);
-                    setShowModal(true);
-                  }}
-                >
-                  <i className="fas fa-eye"></i>
-                  <span>Details</span>
-                </button>
-              </div>
-            </div>
+            <TaskCard
+              key={task.id}
+              task={task}
+              onAction={handleAction}
+              actions={[
+                { action: 'done', label: 'Done', icon: 'fa-circle-check', className: 'done' },
+                { action: 'pending', label: 'Pending', icon: 'fa-clock', className: 'pending' },
+                { action: 'reassign', label: 'Reassign', icon: 'fa-user-pen', className: 'reassign' },
+              ]}
+              showViewNotes={true}
+            />
           ))
         )}
       </div>
 
-      {/* Complete Task Modal */}
+      {/* Modal */}
       {showModal && selectedTask && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+        <div className="modal-overlay" onClick={closeModal}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-icon in-progress">
-              <i className="fas fa-circle-check"></i>
-            </div>
-            <h3 className="modal-title">Complete Task?</h3>
-            <p className="modal-message">Are you sure you have completed this task?</p>
-            
-            <div className="task-details-modal">
-              <div className="detail-row">
-                <label>Task:</label>
-                <span>{selectedTask.title}</span>
-              </div>
-              <div className="detail-row">
-                <label>Started:</label>
-                <span>{formatDate(selectedTask.startedAt)}</span>
-              </div>
-            </div>
+            {/* Done Modal */}
+            {modalType === 'done' && (
+              <>
+                <div className="modal-icon done">
+                  <i className="fas fa-circle-check"></i>
+                </div>
+                <h3 className="modal-title">Mark Task as Done?</h3>
+                <p className="modal-message">Are you sure you have completed this task?</p>
+                <div className="modal-actions">
+                  <button className="btn-cancel" onClick={closeModal}>Cancel</button>
+                  <button className="btn-confirm done" onClick={confirmAction}>Confirm</button>
+                </div>
+              </>
+            )}
 
-            <div className="modal-actions">
-              <button className="btn-cancel" onClick={() => setShowModal(false)}>
-                Cancel
-              </button>
-              <button className="btn-confirm complete" onClick={confirmComplete}>
-                Complete
-              </button>
-            </div>
+            {/* Pending Modal */}
+            {modalType === 'pending' && (
+              <>
+                <div className="modal-icon pending">
+                  <i className="fas fa-clock"></i>
+                </div>
+                <h3 className="modal-title">Mark Task as Pending</h3>
+                <div className="modal-input">
+                  <label>Enter reason for pending</label>
+                  <textarea
+                    value={pendingReason}
+                    onChange={(e) => setPendingReason(e.target.value)}
+                    placeholder="Why is this task pending?"
+                    rows={3}
+                  />
+                </div>
+                <div className="modal-actions">
+                  <button className="btn-cancel" onClick={closeModal}>Cancel</button>
+                  <button className="btn-confirm pending" onClick={confirmAction}>Submit</button>
+                </div>
+              </>
+            )}
+
+            {/* Reassign Modal */}
+            {modalType === 'reassign' && (
+              <>
+                <div className="modal-icon reassign">
+                  <i className="fas fa-user-pen"></i>
+                </div>
+                <h3 className="modal-title">Reassign Task</h3>
+                <div className="modal-input">
+                  <label>Enter Employee User ID</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={reassignEmployee}
+                    onChange={(e) => setReassignEmployee(e.target.value)}
+                    placeholder="e.g. 5"
+                  />
+                </div>
+                <div className="modal-input">
+                  <label>Reason for reassignment</label>
+                  <textarea
+                    value={reassignReason}
+                    onChange={(e) => setReassignReason(e.target.value)}
+                    placeholder="Why are you reassigning this task?"
+                    rows={3}
+                  />
+                </div>
+                <div className="modal-actions">
+                  <button className="btn-cancel" onClick={closeModal}>Cancel</button>
+                  <button className="btn-confirm reassign" onClick={confirmAction}>Reassign</button>
+                </div>
+              </>
+            )}
+
+            {/* View Notes Modal */}
+            {modalType === 'note-view' && (
+              <>
+                <div className="modal-icon note">
+                  <i className="fas fa-sticky-note"></i>
+                </div>
+                <h3 className="modal-title">Task Notes</h3>
+                {noteLoading ? (
+                  <p className="modal-message">Loading notes...</p>
+                ) : noteError ? (
+                  <p className="modal-message" style={{ color: '#ef4444' }}>{noteError}</p>
+                ) : notesList.length === 0 ? (
+                  <p className="modal-message">No notes yet</p>
+                ) : (
+                  <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '16px' }}>
+                    {notesList.map((note, idx) => (
+                      <div key={idx} style={{
+                        padding: '12px',
+                        backgroundColor: '#f0f9ff',
+                        borderRadius: '8px',
+                        marginBottom: '8px',
+                        fontSize: '13px'
+                      }}>
+                        <strong>{note.employee_name || note.employeeName || "Unknown"}</strong>
+                        <p style={{ marginTop: '4px', marginBottom: 0 }}>{note.note}</p>
+                        <small style={{ color: '#94a3b8' }}>
+                          {new Date(note.created_at || note.createdAt).toLocaleString()}
+                        </small>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="modal-actions">
+                  <button className="btn-cancel" onClick={closeModal}>Close</button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -231,129 +339,6 @@ export default function InProgressTasks({ setOpenMenu }) {
           gap: 16px;
         }
 
-        /* Task Card */
-        .task-card {
-          background: rgba(255, 255, 255, 0.95);
-          backdrop-filter: blur(10px);
-          border-radius: 20px;
-          padding: 20px;
-          box-shadow: 0 8px 32px rgba(59, 130, 246, 0.15);
-          border-left: 4px solid #3b82f6;
-          position: relative;
-          transition: transform 0.2s ease, box-shadow 0.2s ease;
-        }
-
-        .task-card:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 12px 40px rgba(59, 130, 246, 0.2);
-        }
-
-        .progress-badge {
-          position: absolute;
-          top: -10px;
-          right: 20px;
-          background: linear-gradient(135deg, #3b82f6, #1d4ed8);
-          color: white;
-          padding: 6px 12px;
-          border-radius: 20px;
-          font-size: 11px;
-          font-weight: 600;
-          display: flex;
-          align-items: center;
-          gap: 4px;
-          box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
-        }
-
-        .progress-badge i {
-          font-size: 10px;
-        }
-
-        .task-content {
-          margin-bottom: 16px;
-          padding-top: 10px;
-        }
-
-        .task-title {
-          font-size: 18px;
-          font-weight: 600;
-          color: #1e293b;
-          margin-bottom: 8px;
-        }
-
-        .task-description {
-          font-size: 14px;
-          color: #64748b;
-          line-height: 1.5;
-          margin-bottom: 12px;
-        }
-
-        .task-details {
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-          margin-bottom: 8px;
-        }
-
-        .detail-item {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          font-size: 13px;
-          color: #475569;
-        }
-
-        .detail-item i {
-          font-size: 12px;
-          color: #3b82f6;
-        }
-
-        /* Action Buttons */
-        .action-buttons {
-          display: flex;
-          gap: 8px;
-        }
-
-        .action-btn {
-          flex: 1;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 6px;
-          padding: 10px 12px;
-          border: none;
-          border-radius: 12px;
-          font-size: 12px;
-          font-weight: 500;
-          cursor: pointer;
-          transition: all 0.2s ease;
-        }
-
-        .action-btn i {
-          font-size: 14px;
-        }
-
-        .action-btn.complete {
-          background: rgba(16, 185, 129, 0.1);
-          color: #10b981;
-          border: 1px solid rgba(16, 185, 129, 0.2);
-        }
-
-        .action-btn.complete:hover {
-          background: rgba(16, 185, 129, 0.2);
-          transform: translateY(-1px);
-        }
-
-        .action-btn.view-details {
-          background: rgba(59, 130, 246, 0.1);
-          color: #3b82f6;
-          border: 1px solid rgba(59, 130, 246, 0.2);
-        }
-
-        .action-btn.view-details:hover {
-          background: rgba(59, 130, 246, 0.2);
-          transform: translateY(-1px);
-        }
-
         /* Modal */
         .modal-overlay {
           position: fixed;
@@ -394,6 +379,22 @@ export default function InProgressTasks({ setOpenMenu }) {
           background: linear-gradient(135deg, #10b981, #059669);
         }
 
+        .modal-icon.done {
+          background: linear-gradient(135deg, #10b981, #059669);
+        }
+
+        .modal-icon.pending {
+          background: linear-gradient(135deg, #f97316, #ea580c);
+        }
+
+        .modal-icon.reassign {
+          background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+        }
+
+        .modal-icon.note {
+          background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+        }
+
         .modal-title {
           font-size: 20px;
           font-weight: 600;
@@ -407,6 +408,39 @@ export default function InProgressTasks({ setOpenMenu }) {
           color: #64748b;
           text-align: center;
           margin-bottom: 20px;
+        }
+
+        .modal-input {
+          margin-bottom: 16px;
+        }
+
+        .modal-input label {
+          display: block;
+          font-size: 13px;
+          font-weight: 600;
+          color: #374151;
+          margin-bottom: 8px;
+        }
+
+        .modal-input input,
+        .modal-input textarea {
+          width: 100%;
+          padding: 10px 12px;
+          border: 1px solid #e5e7eb;
+          border-radius: 8px;
+          font-size: 13px;
+          font-family: inherit;
+        }
+
+        .modal-input textarea {
+          resize: vertical;
+        }
+
+        .modal-input input:focus,
+        .modal-input textarea:focus {
+          outline: none;
+          border-color: #3b82f6;
+          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
         }
 
         .task-details-modal {
@@ -468,12 +502,42 @@ export default function InProgressTasks({ setOpenMenu }) {
           background: #e5e7eb;
         }
 
-        .btn-confirm.complete {
-          background: linear-gradient(135deg, #10b981, #059669);
+        .btn-confirm {
           color: white;
         }
 
+        .btn-confirm.complete {
+          background: linear-gradient(135deg, #10b981, #059669);
+        }
+
         .btn-confirm.complete:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+        }
+
+        .btn-confirm.pending {
+          background: linear-gradient(135deg, #f97316, #ea580c);
+        }
+
+        .btn-confirm.pending:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(249, 115, 22, 0.3);
+        }
+
+        .btn-confirm.reassign {
+          background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+        }
+
+        .btn-confirm.reassign:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+        }
+
+        .btn-confirm.done {
+          background: linear-gradient(135deg, #10b981, #059669);
+        }
+
+        .btn-confirm.done:hover {
           transform: translateY(-1px);
           box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
         }
@@ -567,5 +631,6 @@ export default function InProgressTasks({ setOpenMenu }) {
         }
       `}</style>
     </div>
+  </RefreshWrapper>
   );
 }
