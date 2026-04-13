@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
 const NotificationContext = createContext();
@@ -11,54 +12,53 @@ export const useNotificationContext = () => {
 };
 
 export const NotificationProvider = ({ children }) => {
-  const [notifications, setNotifications] = useState([]);
-  const [showNotificationPanel, setShowNotificationPanel] = useState(false);
-
-  // Load notifications from localStorage on mount
-  useEffect(() => {
+  const getInitialNotifications = () => {
     const storedNotifications = localStorage.getItem('notifications');
     if (storedNotifications) {
-      setNotifications(JSON.parse(storedNotifications));
-    } else {
-      // Add demo notifications for testing
-      const demoNotifications = [
-        {
-          id: Date.now() - 10000,
-          type: 'task_assigned',
-          taskId: 1,
-          taskTitle: 'Complete project documentation',
-          sender: 'Admin',
-          receiver: 'EMP-1024',
-          message: "New task 'Complete project documentation' assigned to you today by Admin",
-          timestamp: new Date(Date.now() - 3600000).toISOString(),
-          read: false
-        },
-        {
-          id: Date.now() - 20000,
-          type: 'task_reassigned',
-          taskId: 4,
-          taskTitle: 'Bug fixes in production',
-          sender: 'Manager',
-          receiver: 'EMP-1024',
-          message: "Task 'Bug fixes in production' has been reassigned to you by Manager",
-          timestamp: new Date(Date.now() - 7200000).toISOString(),
-          read: false
-        },
-        {
-          id: Date.now() - 30000,
-          type: 'task_completed',
-          taskId: 6,
-          taskTitle: 'Update dependencies',
-          sender: 'Rahul Sharma',
-          receiver: 'manager',
-          message: "Task 'Update dependencies' has been completed by Rahul Sharma",
-          timestamp: new Date(Date.now() - 10800000).toISOString(),
-          read: true
-        }
-      ];
-      setNotifications(demoNotifications);
+      return JSON.parse(storedNotifications);
     }
-  }, []);
+
+    const demoNotifications = [
+      {
+        id: Date.now() - 10000,
+        type: 'task_assigned',
+        taskId: 1,
+        taskTitle: 'Complete project documentation',
+        sender: 'Admin',
+        receiver: 'EMP-1024',
+        message: "New task 'Complete project documentation' assigned to you today by Admin",
+        timestamp: new Date(Date.now() - 3600000).toISOString(),
+        read: false
+      },
+      {
+        id: Date.now() - 20000,
+        type: 'task_reassigned',
+        taskId: 4,
+        taskTitle: 'Bug fixes in production',
+        sender: 'Manager',
+        receiver: 'EMP-1024',
+        message: "Task 'Bug fixes in production' has been reassigned to you by Manager",
+        timestamp: new Date(Date.now() - 7200000).toISOString(),
+        read: false
+      },
+      {
+        id: Date.now() - 30000,
+        type: 'task_completed',
+        taskId: 6,
+        taskTitle: 'Update dependencies',
+        sender: 'Rahul Sharma',
+        receiver: 'manager',
+        message: "Task 'Update dependencies' has been completed by Rahul Sharma",
+        timestamp: new Date(Date.now() - 10800000).toISOString(),
+        read: true
+      }
+    ];
+    localStorage.setItem('notifications', JSON.stringify(demoNotifications));
+    return demoNotifications;
+  };
+
+  const [notifications, setNotifications] = useState(() => getInitialNotifications());
+  const [showNotificationPanel, setShowNotificationPanel] = useState(false);
 
   // Save notifications to localStorage whenever they change
   useEffect(() => {

@@ -17,6 +17,8 @@ import InProgressTasks from "./pages/InProgressTasks";
 import PendingTasks from "./pages/PendingTasks";
 import ReassignedTasks from "./pages/ReassignedTasks";
 
+import ProtectedRoute from "./components/ProtectedRoute";
+
 import Sidebar from "./components/Sidebar";
 
 function BackButtonHandler({ enabled }) {
@@ -33,14 +35,6 @@ function BackButtonHandler({ enabled }) {
     if (!enabled) return;
 
     let removeNativeBackListener = null;
-
-    const exitApp = () => {
-      try {
-        CapacitorApp.exitApp();
-      } catch (_) {
-        window.close();
-      }
-    };
 
     const goBackOrHome = () => {
       if (window.history.length > 1) {
@@ -70,9 +64,9 @@ function BackButtonHandler({ enabled }) {
           handleBack();
         });
         removeNativeBackListener = () => listener?.remove?.();
-      } catch (_) {
-        // fallback handled by popstate
-      }
+    } catch {
+      // fallback handled by popstate
+    }
     };
 
     registerNativeBack();
@@ -93,7 +87,7 @@ function BackButtonHandler({ enabled }) {
     setShowExitModal(false);
     try {
       CapacitorApp.exitApp();
-    } catch (_) {
+    } catch {
       window.close();
     }
   };
@@ -184,18 +178,88 @@ function App() {
 
           <div className="app-wrapper">
             <Routes>
-              <Route path="/" element={<Dashboard setOpenMenu={setOpenMenu} />} />
-              <Route path="/tasks" element={<Tasks setOpenMenu={setOpenMenu} />} />
-              <Route path="/report" element={<Report setOpenMenu={setOpenMenu} />} />
-              <Route path="/profile" element={<Profile setOpenMenu={setOpenMenu} />} />
+              <Route
+                path="/"
+                element={
+                  <ProtectedRoute>
+                    <Dashboard setOpenMenu={setOpenMenu} />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/tasks"
+                element={
+                  <ProtectedRoute>
+                    <Tasks setOpenMenu={setOpenMenu} />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/report"
+                element={
+                  <ProtectedRoute>
+                    <Report setOpenMenu={setOpenMenu} />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/profile"
+                element={
+                  <ProtectedRoute>
+                    <Profile setOpenMenu={setOpenMenu} />
+                  </ProtectedRoute>
+                }
+              />
 
-              <Route path="/attendance" element={<Attendance setOpenMenu={setOpenMenu} />} />
-              <Route path="/salary" element={<Salary setOpenMenu={setOpenMenu} />} />
+              <Route
+                path="/attendance"
+                element={
+                  <ProtectedRoute>
+                    <Attendance setOpenMenu={setOpenMenu} />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/salary"
+                element={
+                  <ProtectedRoute>
+                    <Salary setOpenMenu={setOpenMenu} />
+                  </ProtectedRoute>
+                }
+              />
 
-              <Route path="/done" element={<DoneTasks setOpenMenu={setOpenMenu} />} />
-              <Route path="/inprogress" element={<InProgressTasks />} />
-              <Route path="/pending" element={<PendingTasks setOpenMenu={setOpenMenu} />} />
-              <Route path="/reassigned" element={<ReassignedTasks />} />
+              <Route
+                path="/done"
+                element={
+                  <ProtectedRoute>
+                    <DoneTasks />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/inprogress"
+                element={
+                  <ProtectedRoute>
+                    <InProgressTasks />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/pending"
+                element={
+                  <ProtectedRoute>
+                    <PendingTasks setOpenMenu={setOpenMenu} />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/reassigned"
+                element={
+                  <ProtectedRoute>
+                    <ReassignedTasks />
+                  </ProtectedRoute>
+                }
+              />
 
               <Route path="*" element={<Navigate to="/" />} />
             </Routes>

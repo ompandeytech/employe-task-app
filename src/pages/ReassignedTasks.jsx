@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTaskContext } from "../context/taskContextStore";
 import { fetchTaskNotes } from "../utils/taskNotes";
@@ -7,7 +7,7 @@ import RefreshWrapper from "../components/RefreshWrapper";
 
 export default function ReassignedTasks() {
   const navigate = useNavigate();
-  const { getTasksByStatus, updateTaskStatus, refreshTasks } = useTaskContext();
+  const { getTasksByStatus, tasks, updateTaskStatus, refreshTasks } = useTaskContext();
   const [showModal, setShowModal] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
   const [modalType, setModalType] = useState('');
@@ -20,7 +20,46 @@ export default function ReassignedTasks() {
     refreshTasks();
   }, [refreshTasks]);
 
-  const reassignedTasks = getTasksByStatus('reassigned')
+  const [activeTab, setActiveTab] = useState("assignedToMe");
+  const reassignedTasks = getTasksByStatus("reassigned");
+  const currentUser = useMemo(() => {
+    const stored = localStorage.getItem("user");
+    if (!stored) return {};
+    try {
+      return JSON.parse(stored);
+    } catch {
+      return {};
+    }
+  }, []);
+  const currentUserName =
+    currentUser?.name ||
+    currentUser?.fullName ||
+    currentUser?.employee_name ||
+    currentUser?.userName ||
+    "";
+  const normalize = (value) => String(value || "").trim().toLowerCase();
+  const normalizedCurrentUserName = normalize(currentUserName);
+
+  const assignedNamesIncludeCurrent = (assignedTo) => {
+    if (!normalizedCurrentUserName || !assignedTo) return false;
+    const namesArray = Array.isArray(assignedTo) ? assignedTo : [assignedTo];
+    return namesArray.some((name) => normalize(name) === normalizedCurrentUserName);
+  };
+
+  const assignedByMe = tasks.filter(
+    (task) =>
+      task.reassignedBy && normalize(task.reassignedBy) === normalizedCurrentUserName
+  );
+
+  const assignedToMe = tasks.filter(
+    (task) =>
+      assignedNamesIncludeCurrent(task.assignedTo) &&
+      task.reassignedBy &&
+      normalize(task.reassignedBy) !== normalizedCurrentUserName
+  );
+
+  const filteredTasks =
+    activeTab === "assignedByMe" ? assignedByMe : assignedToMe;
 
   const handleReassignedRefresh = useCallback(async () => {
     if (!refreshTasks) return;
@@ -38,6 +77,7 @@ export default function ReassignedTasks() {
   };
 
   const getEmployeeName = (employeeId) => {
+    if (!employeeId) return "Unknown";
     const employees = {
       'EMP-1001': 'John Smith',
       'EMP-1002': 'Sarah Johnson',
@@ -67,13 +107,6 @@ export default function ReassignedTasks() {
 
   const handleAction = async (task, action) => {
     if (action === 'take-back') {
-      try {
-        const storedReassigned = JSON.parse(localStorage.getItem('reassignedTasks') || '[]');
-        const filtered = storedReassigned.filter(t => t.id !== task.id);
-        localStorage.setItem('reassignedTasks', JSON.stringify(filtered));
-      } catch (error) {
-        console.error('Failed to remove task from localStorage', error);
-      }
       updateTaskStatus(task.id, 'todo', {
         reassignedAt: null,
         reassignedTo: null,
@@ -100,13 +133,6 @@ export default function ReassignedTasks() {
   const confirmComplete = () => {
     if (selectedTask) {
       // Remove from localStorage before changing status
-      try {
-        const storedReassigned = JSON.parse(localStorage.getItem('reassignedTasks') || '[]');
-        const filtered = storedReassigned.filter(t => t.id !== selectedTask.id);
-        localStorage.setItem('reassignedTasks', JSON.stringify(filtered));
-      } catch (error) {
-        console.error('Failed to remove task from localStorage', error);
-      }
       updateTaskStatus(selectedTask.id, 'done', {
         completedAt: new Date().toISOString()
       });
@@ -128,24 +154,39 @@ export default function ReassignedTasks() {
   };
 
   return (
-    <RefreshWrapper onRefresh={handleReassignedRefresh}>
-      <div className="reassigned-tasks-container">
+    <>
+      <RefreshWrapper onRefresh={handleReassignedRefresh}>
+        <div className="reassigned-tasks-container reassigned-container">
       {/* Page Header */}
       <div className="page-header">
         <h1 className="page-title">Reassigned Tasks</h1>
         <p className="page-subtitle">{reassignedTasks.length} task{reassignedTasks.length !== 1 ? 's' : ''} reassigned</p>
       </div>
 
+      <div className="tabs">
+        <button
+          className={activeTab === "assignedByMe" ? "active" : ""}
+          onClick={() => setActiveTab("assignedByMe")}
+        >
+          Assigned by Me
+        </button>
+        <button
+          className={activeTab === "assignedToMe" ? "active" : ""}
+          onClick={() => setActiveTab("assignedToMe")}
+        >
+          Assigned to Me
+        </button>
+      </div>
       {/* Task Cards */}
       <div className="tasks-list">
-        {reassignedTasks.length === 0 ? (
+        {filteredTasks.length === 0 ? (
           <div className="empty-state">
             <i className="fas fa-user-pen"></i>
-            <h3>No reassigned tasks</h3>
-            <p>All tasks are with their current assignees!</p>
+            <h3>No tasks here</h3>
+            <p>Switch tabs to find more reassigned work.</p>
           </div>
         ) : (
-          reassignedTasks.map(task => (
+          filteredTasks.map(task => (
             <TaskCard
               key={task.id}
               task={task}
@@ -214,8 +255,18 @@ export default function ReassignedTasks() {
                   </div>
                   <div className="detail-row">
                     <label>Reassigned to:</label>
-                    <span>{getEmployeeName(selectedTask.reassignedTo)}</span>
+                    <span>
+                      {getEmployeeName(
+                        selectedTask.reassignedToName || selectedTask.reassignedTo
+                      )}
+                    </span>
                   </div>
+                  {selectedTask.reassignedBy && (
+                    <div className="detail-row">
+                      <label>Reassigned by:</label>
+                      <span>{selectedTask.reassignedBy}</span>
+                    </div>
+                  )}
                   <div className="detail-row">
                     <label>Reassigned:</label>
                     <span>{formatDate(selectedTask.reassignedAt)}</span>
@@ -242,7 +293,9 @@ export default function ReassignedTasks() {
         </div>
       )}
 
-      {/* Soft Bottom Navigation */}
+        </div>
+      </RefreshWrapper>
+
       <div className="soft-bottom-nav">
         <div className="nav-item" onClick={() => navigate("/")}>
           <i className="fas fa-home"></i>
@@ -263,6 +316,36 @@ export default function ReassignedTasks() {
       </div>
 
       <style>{`
+        .tabs {
+          display: flex;
+          gap: 12px;
+          justify-content: center;
+          margin: 20px 0 0;
+        }
+
+        .tabs button {
+          flex: 1;
+          padding: 10px 12px;
+          border: none;
+          border-radius: 12px;
+          font-size: 14px;
+          font-weight: 600;
+          cursor: pointer;
+          background: #eef2ff;
+          color: #4f46e5;
+          transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .tabs button.active {
+          background: #4f46e5;
+          color: white;
+          box-shadow: 0 6px 20px rgba(79, 70, 229, 0.4);
+        }
+
+        .tabs button:hover {
+          transform: translateY(-2px);
+        }
+
         * {
           box-sizing: border-box;
           margin: 0;
@@ -279,6 +362,10 @@ export default function ReassignedTasks() {
           min-height: 100vh;
           background: linear-gradient(135deg, #faf5ff 0%, #e9d5ff 100%);
           padding-bottom: 80px;
+        }
+
+        .reassigned-container {
+          padding-bottom: 100px;
         }
 
         /* Page Header */
@@ -463,8 +550,10 @@ export default function ReassignedTasks() {
         .soft-bottom-nav {
           position: fixed;
           bottom: 0;
-          left: 0;
-          right: 0;
+          left: 50%;
+          transform: translateX(-50%);
+          width: 100%;
+          max-width: 480px;
           background: rgba(255, 255, 255, 0.95);
           backdrop-filter: blur(15px);
           border-top: 1px solid rgba(0, 0, 0, 0.05);
@@ -473,7 +562,7 @@ export default function ReassignedTasks() {
           justify-content: space-around;
           padding: 12px 0;
           box-shadow: 0 -2px 15px rgba(0, 0, 0, 0.06);
-          z-index: 1000;
+          z-index: 9999;
         }
 
         .nav-item {
@@ -547,7 +636,6 @@ export default function ReassignedTasks() {
           }
         }
       `}</style>
-    </div>
-  </RefreshWrapper>
+    </>
   );
 }

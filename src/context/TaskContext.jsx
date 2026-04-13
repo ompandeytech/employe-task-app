@@ -4,6 +4,116 @@ import axios from 'axios';
 import { API_BASE, getAuthHeaders } from '../utils/apiConfig';
 import { TaskContext } from './taskContextStore';
 
+const NAME_FIELD_CANDIDATES = [
+  'name',
+  'employee_name',
+  'employeeName',
+  'full_name',
+  'fullName',
+  'display_name',
+  'displayName',
+  'username',
+  'userName',
+  'first_name',
+  'firstName',
+  'firstname',
+  'given_name',
+  'givenName',
+  'last_name',
+  'lastName',
+  'lastname',
+  'surname',
+  'family_name',
+  'familyName',
+];
+
+const ID_FIELD_CANDIDATES = [
+  'id',
+  'employee_id',
+  'employeeId',
+  'user_id',
+  'userId',
+];
+
+const normalizeNameList = (value, options = {}) => {
+  const { allowNumeric = true } = options;
+  if (value == null) return [];
+  const candidates = Array.isArray(value) ? value : String(value).split(',');
+  return candidates
+    .map((item) => (item == null ? '' : String(item).trim()))
+    .filter((text) => {
+      if (!text) return false;
+      if (allowNumeric) return true;
+      return !/^[\d\s,]+$/.test(text);
+    });
+};
+
+const parseIdList = (value) => {
+  if (value == null) return [];
+  if (Array.isArray(value)) {
+    return value.map((item) => (item == null ? '' : String(item).trim())).filter(Boolean);
+  }
+  const text = String(value).trim();
+  if (!text) return [];
+  const sanitized = text.replace(/\[/g, '').replace(/\]/g, '');
+  const parts = sanitized.split(',').map((part) => part.trim()).filter(Boolean);
+  return parts.length ? parts : [text];
+};
+
+const matchEmployeeIdFromRecord = (record) => {
+  if (!record || typeof record !== 'object') return null;
+  for (const field of ID_FIELD_CANDIDATES) {
+    if (record[field] != null) return record[field];
+  }
+  if (record.employee && typeof record.employee === 'object' && record.employee.id != null) {
+    return record.employee.id;
+  }
+  if (record.user && typeof record.user === 'object' && record.user.id != null) {
+    return record.user.id;
+  }
+  return null;
+};
+
+const matchEmployeeNameFromRecord = (record) => {
+  if (!record || typeof record !== 'object') return null;
+  for (const field of NAME_FIELD_CANDIDATES) {
+    const value = record[field];
+    if (value) return String(value).trim();
+  }
+  const firstName = record.first_name ?? record.firstName ?? record.firstname ?? record.given_name ?? record.givenName;
+  const lastName = record.last_name ?? record.lastName ?? record.lastname ?? record.surname ?? record.family_name ?? record.familyName;
+  if (firstName || lastName) {
+    return [firstName, lastName].filter(Boolean).join(' ').trim() || null;
+  }
+  return null;
+};
+
+const buildEmployeeLookupFromList = (rows) => {
+  const lookup = new Map();
+  if (!Array.isArray(rows)) return lookup;
+  rows.forEach((row) => {
+    const id = matchEmployeeIdFromRecord(row);
+    const name = matchEmployeeNameFromRecord(row);
+    if (id != null && name) {
+      lookup.set(String(id), name);
+    }
+  });
+  return lookup;
+};
+
+const lookupEmployeeNameById = (lookup, rawId) => {
+  if (!lookup || rawId == null) return null;
+  const normalizedId = String(rawId).trim();
+  if (!normalizedId) return null;
+  if (lookup.has(normalizedId)) return lookup.get(normalizedId);
+  const numericId = Number(normalizedId);
+  if (!Number.isNaN(numericId)) {
+    const numericKey = String(numericId);
+    if (lookup.has(numericKey)) return lookup.get(numericKey);
+  }
+  return null;
+};
+
 const USE_FILTER_ENDPOINTS = import.meta.env.VITE_USE_TASK_FILTER_ENDPOINTS === 'true';
 const USE_UPDATE_STATUS_ENDPOINT = false;
 const PENDING_TASKS_KEY = 'pendingTasks';
@@ -13,10 +123,37 @@ export const TaskProvider = ({ children }) => {
   const { tasks, todayTasks } = taskState;
   const tasksRef = useRef(tasks);
   const { notifyTaskReassigned, notifyTaskCompleted } = useNotificationContext();
+  const employeeLookupRef = useRef(new Map());
+  const employeesLoadedRef = useRef(false);
 
   useEffect(() => {
     tasksRef.current = tasks;
   }, [tasks]);
+
+  const updateEmployeeLookup = (rows) => {
+    const lookup = buildEmployeeLookupFromList(rows);
+    employeeLookupRef.current = lookup;
+    return lookup;
+  };
+
+  const loadEmployees = async () => {
+    try {
+      const response = await axios.get(`${API_BASE}/users`, { headers: getAuthHeaders() });
+      const rows = Array.isArray(response.data) ? response.data : [];
+      updateEmployeeLookup(rows);
+    } catch (err) {
+      console.error('Failed to load employee directory', err);
+    }
+    return employeeLookupRef.current;
+  };
+
+  const ensureEmployeesLoaded = async () => {
+    if (!employeesLoadedRef.current) {
+      await loadEmployees();
+      employeesLoadedRef.current = true;
+    }
+    return employeeLookupRef.current;
+  };
 
   const getLoggedInUser = () => JSON.parse(localStorage.getItem('user') || '{}');
 
@@ -37,7 +174,36 @@ export const TaskProvider = ({ children }) => {
   const normalizeTask = (task) => {
     const createdAt = task.created_at || task.createdAt || task.updated_at || task.updatedAt || new Date().toISOString();
     const status = normalizeStatus(task.status);
-    const assignedTo = task.assigned_employee_names ?? task.assigned_employee_ids ?? task.assignedTo ?? task.assigned_to ?? task.employee_name ?? task.employeeName ?? task.employee_id ?? task.employeeId ?? null;
+
+    const resolveAssignedNames = () => {
+      const explicitNames = normalizeNameList(task.assigned_employee_names);
+      if (explicitNames.length) return explicitNames;
+
+      const assignedIds = parseIdList(task.assigned_employee_ids);
+      if (assignedIds.length) {
+        const lookup = employeeLookupRef.current;
+        const idNames = assignedIds
+          .map((id) => lookupEmployeeNameById(lookup, id))
+          .filter(Boolean);
+        if (idNames.length) return idNames;
+      }
+
+      const fallbackFields = [
+        task.assignedTo,
+        task.assigned_to,
+        task.employee_name ?? task.employeeName ?? task.name ?? task.fullName ?? task.full_name,
+      ];
+
+      for (const fieldValue of fallbackFields) {
+        const names = normalizeNameList(fieldValue, { allowNumeric: false });
+        if (names.length) return names;
+      }
+
+      return [];
+    };
+
+    const resolvedNames = resolveAssignedNames();
+    const assignedTo = resolvedNames.length > 0 ? resolvedNames : 'Unassigned';
     const taskId = task.id ?? task.task_id ?? task.taskId;
     const reassignedTo = task.reassignedTo ?? task.reassigned_to ?? null;
     const pendingReason = task.pendingReason ?? task.pending_reason ?? task.reason ?? null;
@@ -45,6 +211,8 @@ export const TaskProvider = ({ children }) => {
     const completedAt = task.completedAt ?? task.completed_at ?? (status === 'done' ? createdAt : null);
     const startedAt = task.startedAt ?? task.started_at ?? (status === 'in_progress' ? createdAt : null);
     const pendingAt = task.pendingAt ?? task.pending_at ?? (status === 'pending' ? createdAt : null);
+    const reassignedBy = task.reassignedBy ?? task.reassigned_by ?? null;
+    const reassignedToNameField = task.reassignedToName ?? task.reassigned_to_name ?? null;
 
     return {
       ...task,
@@ -54,6 +222,8 @@ export const TaskProvider = ({ children }) => {
       assignedTo,
       assigned_to: task.assigned_to ?? task.assignedTo ?? null,
       reassignedTo,
+      reassignedBy,
+      reassignedToName: reassignedToNameField,
       createdAt,
       pendingReason,
       reassignReason,
@@ -162,6 +332,8 @@ export const TaskProvider = ({ children }) => {
       return;
     }
 
+    await ensureEmployeesLoaded();
+
     const previousPendingTasksMap = new Map(
       tasksRef.current
         .filter((task) => task.status === 'pending' && !task.reassignedTo)
@@ -174,8 +346,6 @@ export const TaskProvider = ({ children }) => {
         .filter((task) => task.status === 'pending')
         .map((task) => [task.id, task])
     );
-
-    const localReassigned = JSON.parse(localStorage.getItem('reassignedTasks') || '[]');
 
     const normalizeEmployeeRows = (rows) => rows.map((row) => {
       const normalized = normalizeTask(row);
@@ -222,7 +392,7 @@ export const TaskProvider = ({ children }) => {
       const todayRows = await fetchTodayTasks(userId, employeeRows);
 
       const normalizedEmployeeTasks = normalizeEmployeeRows(employeeRows);
-      const mergedTasks = [...normalizedEmployeeTasks, ...localReassigned, ...localPending];
+      const mergedTasks = [...normalizedEmployeeTasks, ...localPending];
       const uniqueTasks = mergeUniqueTasks(mergedTasks);
       const normalizedTodayTasks = todayRows.map(normalizeTask);
 
@@ -240,7 +410,7 @@ export const TaskProvider = ({ children }) => {
           );
 
           const normalizedEmployeeTasks = normalizeEmployeeRows(employeeRows);
-          const mergedTasks = [...normalizedEmployeeTasks, ...localReassigned, ...localPending];
+          const mergedTasks = [...normalizedEmployeeTasks, ...localPending];
           const uniqueTasks = mergeUniqueTasks(mergedTasks);
           const normalizedTodayTasks = todayRows.map(normalizeTask);
 
@@ -404,17 +574,6 @@ export const TaskProvider = ({ children }) => {
       removeLocalPendingTask(taskId);
     }
 
-    if (normalizedStatus === 'reassigned') {
-      try {
-        const storedReassigned = JSON.parse(localStorage.getItem('reassignedTasks') || '[]');
-        const filtered = storedReassigned.filter(t => t.id !== taskId);
-        const updated = [...filtered, updatedTask];
-        localStorage.setItem('reassignedTasks', JSON.stringify(updated));
-      } catch (error) {
-        console.error('Failed to save reassigned task to localStorage', error);
-      }
-    }
-    
     // Only load tasks for non-reassigned updates to prevent losing reassigned tasks
     if (normalizedStatus !== 'reassigned') {
       await loadTasks();

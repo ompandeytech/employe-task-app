@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useTaskContext } from "../context/taskContextStore";
 import RefreshWrapper from "../components/RefreshWrapper";
 
-export default function DoneTasks({ setOpenMenu }) {
+export default function DoneTasks() {
   const navigate = useNavigate();
   const { getTasksByStatus, refreshTasks } = useTaskContext();
   const [showModal, setShowModal] = useState(false);
@@ -27,8 +27,9 @@ export default function DoneTasks({ setOpenMenu }) {
   };
 
   return (
-    <RefreshWrapper onRefresh={handleDoneRefresh}>
-      <div className="done-tasks-container">
+    <>
+      <RefreshWrapper onRefresh={handleDoneRefresh}>
+        <div className="done-tasks-container done-container">
       {/* Page Header */}
       <div className="page-header">
         <h1 className="page-title">Completed Tasks</h1>
@@ -125,7 +126,9 @@ export default function DoneTasks({ setOpenMenu }) {
         </div>
       )}
 
-      {/* Soft Bottom Navigation */}
+        </div>
+      </RefreshWrapper>
+
       <div className="soft-bottom-nav">
         <div className="nav-item" onClick={() => navigate("/")}>
           <i className="fas fa-home"></i>
@@ -162,6 +165,10 @@ export default function DoneTasks({ setOpenMenu }) {
           min-height: 100vh;
           background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
           padding-bottom: 80px;
+        }
+
+        .done-container {
+          padding-bottom: 100px;
         }
 
         /* Page Header */
@@ -426,8 +433,10 @@ export default function DoneTasks({ setOpenMenu }) {
         .soft-bottom-nav {
           position: fixed;
           bottom: 0;
-          left: 0;
-          right: 0;
+          left: 50%;
+          transform: translateX(-50%);
+          width: 100%;
+          max-width: 480px;
           background: rgba(255, 255, 255, 0.95);
           backdrop-filter: blur(15px);
           border-top: 1px solid rgba(0, 0, 0, 0.05);
@@ -436,7 +445,7 @@ export default function DoneTasks({ setOpenMenu }) {
           justify-content: space-around;
           padding: 12px 0;
           box-shadow: 0 -2px 15px rgba(0, 0, 0, 0.06);
-          z-index: 1000;
+          z-index: 9999;
         }
 
         .nav-item {
@@ -510,7 +519,6 @@ export default function DoneTasks({ setOpenMenu }) {
           }
         }
       `}</style>
-    </div>
-  </RefreshWrapper>
+    </>
   );
 }

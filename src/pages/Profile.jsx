@@ -126,7 +126,7 @@ export default function Profile({ setOpenMenu }) {
   const handleLogout = () => {
     localStorage.removeItem("user");
     localStorage.removeItem("token");
-    navigate("/login");
+    window.location.href = "/login";
   };
 
   // Test notification function
@@ -149,8 +149,9 @@ export default function Profile({ setOpenMenu }) {
   const displayTempProfile = tempProfile || {};
 
   return (
-    <RefreshWrapper onRefresh={handleProfileRefresh}>
-      <div className="profile-dashboard">
+    <>
+      <RefreshWrapper onRefresh={handleProfileRefresh}>
+        <div className="profile-dashboard profile-container">
       {/* Header */}
       <div className="profile-header">
         <button className="menu-btn" onClick={() => setOpenMenu(true)}>
@@ -431,7 +432,9 @@ export default function Profile({ setOpenMenu }) {
         </div>
       )}
 
-      {/* Bottom Navigation */}
+      </div>
+      </RefreshWrapper>
+
       <div className="bottom-nav">
         <div className="nav-item" onClick={() => navigate("/")}>
           <i className="fas fa-home"></i>
@@ -471,6 +474,10 @@ export default function Profile({ setOpenMenu }) {
           padding: 20px 16px 100px;
           max-width: 480px;
           margin: 0 auto;
+        }
+
+        .profile-container {
+          padding-bottom: 100px;
         }
 
         /* Header */
@@ -956,7 +963,7 @@ export default function Profile({ setOpenMenu }) {
           justify-content: space-around;
           padding: 12px 20px;
           box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.08);
-          z-index: 1000;
+          z-index: 9999;
         }
 
         .nav-item {
@@ -1022,7 +1029,6 @@ export default function Profile({ setOpenMenu }) {
           }
         }
       `}</style>
-    </div>
-  </RefreshWrapper>
+    </>
   );
 }

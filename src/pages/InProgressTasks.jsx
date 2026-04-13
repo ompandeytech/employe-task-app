@@ -1,9 +1,22 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
+import axios from "axios";
+import { API_BASE, getAuthHeaders } from "../utils/apiConfig";
+import Select from "react-select";
 import { useTaskContext } from "../context/taskContextStore";
 import TaskCard from "../components/TaskCard";
 import { fetchTaskNotes } from "../utils/taskNotes";
 import RefreshWrapper from "../components/RefreshWrapper";
+
+const getStoredUser = () => {
+  if (typeof window === "undefined") return {};
+  try {
+    return JSON.parse(localStorage.getItem("user") || "{}");
+  } catch {
+    return {};
+  }
+};
 
 export default function InProgressTasks() {
   const navigate = useNavigate();
@@ -14,16 +27,49 @@ export default function InProgressTasks() {
   const [pendingReason, setPendingReason] = useState('');
   const [reassignEmployee, setReassignEmployee] = useState('');
   const [reassignReason, setReassignReason] = useState('');
+  const [employees, setEmployees] = useState([]);
   const [notesList, setNotesList] = useState([]);
   const [noteLoading, setNoteLoading] = useState(false);
   const [noteError, setNoteError] = useState('');
+  const menuPortalTarget = typeof document !== "undefined" ? document.body : null;
 
   const inProgressTasks = getTasksByStatus('inprogress');
+  const modalRoot = typeof document !== "undefined" ? document.body : null;
 
   const handleInProgressRefresh = useCallback(async () => {
     if (!refreshTasks) return;
     await refreshTasks();
   }, [refreshTasks]);
+
+  useEffect(() => {
+    const loadEmployees = async () => {
+      try {
+        const response = await axios.get(`${API_BASE}/users`, {
+          headers: getAuthHeaders(),
+        });
+        const data = Array.isArray(response.data) ? response.data : [];
+        setEmployees(data);
+      } catch (err) {
+        console.error("Failed to load employees:", err);
+        setEmployees([]);
+      }
+    };
+    loadEmployees();
+  }, []);
+
+  const employeeOptions = useMemo(() => {
+    return employees
+      .map((emp) => {
+        const rawId = emp?.id ?? emp?.employee_id;
+        if (rawId == null) return null;
+        return {
+          value: rawId,
+          label: emp?.name ?? emp?.employee_name ?? emp?.username ?? "Employee",
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [employees]);
 
   const handleAction = async (task, action) => {
     setSelectedTask(task);
@@ -67,18 +113,35 @@ export default function InProgressTasks() {
         };
         await updateTaskStatus(selectedTask.id, 'pending', additionalData);
         break;
-      case 'reassign':
-        if (!reassignEmployee.trim()) {
-          alert('Please enter an employee ID to reassign the task.');
+      case 'reassign': {
+        if (!reassignEmployee) {
+          alert('Please select an employee to reassign the task.');
           return;
         }
+        const selectedEmployee = employeeOptions.find(
+          (option) => String(option.value) === String(reassignEmployee)
+        );
+        if (!selectedEmployee) {
+          alert('Selected employee is not valid. Please choose from the list.');
+          return;
+        }
+        const storedUser = getStoredUser();
+        const reassignedByName =
+          storedUser?.name ||
+          storedUser?.fullName ||
+          storedUser?.employee_name ||
+          storedUser?.userName ||
+          "Admin";
         additionalData = { 
           reassignReason: reassignReason,
-          reassignedTo: reassignEmployee,
-          reassignedAt: new Date().toISOString()
+          reassignedTo: selectedEmployee.value,
+          reassignedToName: selectedEmployee.label,
+          reassignedAt: new Date().toISOString(),
+          reassignedBy: reassignedByName,
         };
         await updateTaskStatus(selectedTask.id, 'reassigned', additionalData);
         break;
+      }
     }
 
     closeModal();
@@ -97,8 +160,9 @@ export default function InProgressTasks() {
 
 
   return (
-    <RefreshWrapper onRefresh={handleInProgressRefresh}>
-      <div className="inprogress-tasks-container">
+    <>
+      <RefreshWrapper onRefresh={handleInProgressRefresh}>
+        <div className="inprogress-tasks-container inprogress-container">
       {/* Page Header */}
       <div className="page-header">
         <h1 className="page-title">In Progress</h1>
@@ -131,122 +195,130 @@ export default function InProgressTasks() {
       </div>
 
       {/* Modal */}
-      {showModal && selectedTask && (
-        <div className="modal-overlay" onClick={closeModal}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            {/* Done Modal */}
-            {modalType === 'done' && (
-              <>
-                <div className="modal-icon done">
-                  <i className="fas fa-circle-check"></i>
-                </div>
-                <h3 className="modal-title">Mark Task as Done?</h3>
-                <p className="modal-message">Are you sure you have completed this task?</p>
-                <div className="modal-actions">
-                  <button className="btn-cancel" onClick={closeModal}>Cancel</button>
-                  <button className="btn-confirm done" onClick={confirmAction}>Confirm</button>
-                </div>
-              </>
-            )}
-
-            {/* Pending Modal */}
-            {modalType === 'pending' && (
-              <>
-                <div className="modal-icon pending">
-                  <i className="fas fa-clock"></i>
-                </div>
-                <h3 className="modal-title">Mark Task as Pending</h3>
-                <div className="modal-input">
-                  <label>Enter reason for pending</label>
-                  <textarea
-                    value={pendingReason}
-                    onChange={(e) => setPendingReason(e.target.value)}
-                    placeholder="Why is this task pending?"
-                    rows={3}
-                  />
-                </div>
-                <div className="modal-actions">
-                  <button className="btn-cancel" onClick={closeModal}>Cancel</button>
-                  <button className="btn-confirm pending" onClick={confirmAction}>Submit</button>
-                </div>
-              </>
-            )}
-
-            {/* Reassign Modal */}
-            {modalType === 'reassign' && (
-              <>
-                <div className="modal-icon reassign">
-                  <i className="fas fa-user-pen"></i>
-                </div>
-                <h3 className="modal-title">Reassign Task</h3>
-                <div className="modal-input">
-                  <label>Enter Employee User ID</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={reassignEmployee}
-                    onChange={(e) => setReassignEmployee(e.target.value)}
-                    placeholder="e.g. 5"
-                  />
-                </div>
-                <div className="modal-input">
-                  <label>Reason for reassignment</label>
-                  <textarea
-                    value={reassignReason}
-                    onChange={(e) => setReassignReason(e.target.value)}
-                    placeholder="Why are you reassigning this task?"
-                    rows={3}
-                  />
-                </div>
-                <div className="modal-actions">
-                  <button className="btn-cancel" onClick={closeModal}>Cancel</button>
-                  <button className="btn-confirm reassign" onClick={confirmAction}>Reassign</button>
-                </div>
-              </>
-            )}
-
-            {/* View Notes Modal */}
-            {modalType === 'note-view' && (
-              <>
-                <div className="modal-icon note">
-                  <i className="fas fa-sticky-note"></i>
-                </div>
-                <h3 className="modal-title">Task Notes</h3>
-                {noteLoading ? (
-                  <p className="modal-message">Loading notes...</p>
-                ) : noteError ? (
-                  <p className="modal-message" style={{ color: '#ef4444' }}>{noteError}</p>
-                ) : notesList.length === 0 ? (
-                  <p className="modal-message">No notes yet</p>
-                ) : (
-                  <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '16px' }}>
-                    {notesList.map((note, idx) => (
-                      <div key={idx} style={{
-                        padding: '12px',
-                        backgroundColor: '#f0f9ff',
-                        borderRadius: '8px',
-                        marginBottom: '8px',
-                        fontSize: '13px'
-                      }}>
-                        <strong>{note.employee_name || note.employeeName || "Unknown"}</strong>
-                        <p style={{ marginTop: '4px', marginBottom: 0 }}>{note.note}</p>
-                        <small style={{ color: '#94a3b8' }}>
-                          {new Date(note.created_at || note.createdAt).toLocaleString()}
-                        </small>
-                      </div>
-                    ))}
+      {showModal && selectedTask && modalRoot &&
+        createPortal(
+          <div className="modal-overlay" onClick={closeModal}>
+            <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+              {/* Done Modal */}
+              {modalType === 'done' && (
+                <>
+                  <div className="modal-icon done">
+                    <i className="fas fa-circle-check"></i>
                   </div>
-                )}
-                <div className="modal-actions">
-                  <button className="btn-cancel" onClick={closeModal}>Close</button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
+                  <h3 className="modal-title">Mark Task as Done?</h3>
+                  <p className="modal-message">Are you sure you have completed this task?</p>
+                  <div className="modal-actions">
+                    <button className="btn-cancel" onClick={closeModal}>Cancel</button>
+                    <button className="btn-confirm done" onClick={confirmAction}>Confirm</button>
+                  </div>
+                </>
+              )}
 
-      {/* Soft Bottom Navigation */}
+              {/* Pending Modal */}
+              {modalType === 'pending' && (
+                <>
+                  <div className="modal-icon pending">
+                    <i className="fas fa-clock"></i>
+                  </div>
+                  <h3 className="modal-title">Mark Task as Pending</h3>
+                  <div className="modal-input">
+                    <label>Enter reason for pending</label>
+                    <textarea
+                      value={pendingReason}
+                      onChange={(e) => setPendingReason(e.target.value)}
+                      placeholder="Why is this task pending?"
+                      rows={3}
+                    />
+                  </div>
+                  <div className="modal-actions">
+                    <button className="btn-cancel" onClick={closeModal}>Cancel</button>
+                    <button className="btn-confirm pending" onClick={confirmAction}>Submit</button>
+                  </div>
+                </>
+              )}
+
+              {/* Reassign Modal */}
+              {modalType === 'reassign' && (
+                <>
+                  <div className="modal-icon reassign">
+                    <i className="fas fa-user-pen"></i>
+                  </div>
+                  <h3 className="modal-title">Reassign Task</h3>
+                <div className="modal-input">
+                  <label>Select Employee</label>
+                  <Select
+                    value={employeeOptions.find((opt) => opt.value === reassignEmployee) ?? null}
+                    options={employeeOptions}
+                    onChange={(option) => setReassignEmployee(option?.value ?? "")}
+                    placeholder="Select employee"
+                    menuPortalTarget={menuPortalTarget}
+                    styles={{
+                      menuPortal: (base) => ({ ...base, zIndex: 99999 }),
+                      menu: (base) => ({ ...base, zIndex: 99999 }),
+                    }}
+                  />
+                </div>
+                  <div className="modal-input">
+                    <label>Reason for reassignment</label>
+                    <textarea
+                      value={reassignReason}
+                      onChange={(e) => setReassignReason(e.target.value)}
+                      placeholder="Why are you reassigning this task?"
+                      rows={3}
+                    />
+                  </div>
+                  <div className="modal-actions">
+                    <button className="btn-cancel" onClick={closeModal}>Cancel</button>
+                    <button className="btn-confirm reassign" onClick={confirmAction}>Reassign</button>
+                  </div>
+                </>
+              )}
+
+              {/* View Notes Modal */}
+              {modalType === 'note-view' && (
+                <>
+                  <div className="modal-icon note">
+                    <i className="fas fa-sticky-note"></i>
+                  </div>
+                  <h3 className="modal-title">Task Notes</h3>
+                  {noteLoading ? (
+                    <p className="modal-message">Loading notes...</p>
+                  ) : noteError ? (
+                    <p className="modal-message" style={{ color: '#ef4444' }}>{noteError}</p>
+                  ) : notesList.length === 0 ? (
+                    <p className="modal-message">No notes yet</p>
+                  ) : (
+                    <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '16px' }}>
+                      {notesList.map((note, idx) => (
+                        <div key={idx} style={{
+                          padding: '12px',
+                          backgroundColor: '#f0f9ff',
+                          borderRadius: '8px',
+                          marginBottom: '8px',
+                          fontSize: '13px'
+                        }}>
+                          <strong>{note.employee_name || note.employeeName || "Unknown"}</strong>
+                          <p style={{ marginTop: '4px', marginBottom: 0 }}>{note.note}</p>
+                          <small style={{ color: '#94a3b8' }}>
+                            {new Date(note.created_at || note.createdAt).toLocaleString()}
+                          </small>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="modal-actions">
+                    <button className="btn-cancel" onClick={closeModal}>Close</button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>,
+          modalRoot
+        )}
+
+        </div>
+      </RefreshWrapper>
+
       <div className="soft-bottom-nav">
         <div className="nav-item" onClick={() => navigate("/")}>
           <i className="fas fa-home"></i>
@@ -283,6 +355,10 @@ export default function InProgressTasks() {
           min-height: 100vh;
           background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
           padding-bottom: 80px;
+        }
+
+        .inprogress-container {
+          padding-bottom: 100px;
         }
 
         /* Page Header */
@@ -546,8 +622,10 @@ export default function InProgressTasks() {
         .soft-bottom-nav {
           position: fixed;
           bottom: 0;
-          left: 0;
-          right: 0;
+          left: 50%;
+          transform: translateX(-50%);
+          width: 100%;
+          max-width: 480px;
           background: rgba(255, 255, 255, 0.95);
           backdrop-filter: blur(15px);
           border-top: 1px solid rgba(0, 0, 0, 0.05);
@@ -556,7 +634,7 @@ export default function InProgressTasks() {
           justify-content: space-around;
           padding: 12px 0;
           box-shadow: 0 -2px 15px rgba(0, 0, 0, 0.06);
-          z-index: 1000;
+          z-index: 9999;
         }
 
         .nav-item {
@@ -630,7 +708,6 @@ export default function InProgressTasks() {
           }
         }
       `}</style>
-    </div>
-  </RefreshWrapper>
+    </>
   );
 }

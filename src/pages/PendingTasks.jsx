@@ -91,8 +91,9 @@ export default function PendingTasks() {
   };
 
   return (
-    <RefreshWrapper onRefresh={handlePendingRefresh}>
-      <div className="pending-tasks-container">
+    <>
+      <RefreshWrapper onRefresh={handlePendingRefresh}>
+        <div className="pending-tasks-container pending-container">
       {/* Page Header */}
       <div className="page-header">
         <h1 className="page-title">Pending Tasks</h1>
@@ -201,7 +202,9 @@ export default function PendingTasks() {
         </div>
       )}
 
-      {/* Soft Bottom Navigation */}
+        </div>
+      </RefreshWrapper>
+
       <div className="soft-bottom-nav">
         <div className="nav-item" onClick={() => navigate("/")}>
           <i className="fas fa-home"></i>
@@ -238,6 +241,10 @@ export default function PendingTasks() {
           min-height: 100vh;
           background: linear-gradient(135deg, #fff7ed 0%, #fed7aa 100%);
           padding-bottom: 80px;
+        }
+
+        .pending-container {
+          padding-bottom: 100px;
         }
 
         /* Page Header */
@@ -422,8 +429,10 @@ export default function PendingTasks() {
         .soft-bottom-nav {
           position: fixed;
           bottom: 0;
-          left: 0;
-          right: 0;
+          left: 50%;
+          transform: translateX(-50%);
+          width: 100%;
+          max-width: 480px;
           background: rgba(255, 255, 255, 0.95);
           backdrop-filter: blur(15px);
           border-top: 1px solid rgba(0, 0, 0, 0.05);
@@ -432,7 +441,7 @@ export default function PendingTasks() {
           justify-content: space-around;
           padding: 12px 0;
           box-shadow: 0 -2px 15px rgba(0, 0, 0, 0.06);
-          z-index: 1000;
+          z-index: 9999;
         }
 
         .nav-item {
@@ -506,7 +515,6 @@ export default function PendingTasks() {
           }
         }
       `}</style>
-    </div>
-  </RefreshWrapper>
+    </>
   );
 }

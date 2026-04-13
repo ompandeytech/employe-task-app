@@ -171,8 +171,9 @@ export default function Report({ setOpenMenu }) {
   }, [filteredData.tasks]);
 
   return (
-    <RefreshWrapper onRefresh={handleReportRefresh}>
-      <div className="performance-dashboard">
+    <>
+      <RefreshWrapper onRefresh={handleReportRefresh}>
+        <div className="performance-dashboard report-container">
       {/* Header */}
       <div className="report-header">
         <button className="menu-btn" onClick={() => setOpenMenu(true)}>
@@ -356,7 +357,9 @@ export default function Report({ setOpenMenu }) {
         </div>
       </div>
 
-      {/* Bottom Navigation */}
+    </div>
+  </RefreshWrapper>
+
       <div className="bottom-nav">
         <div className="nav-item" onClick={() => navigate("/")}>
           <i className="fas fa-home"></i>
@@ -396,6 +399,10 @@ export default function Report({ setOpenMenu }) {
           padding: 24px 20px 100px;
           max-width: 480px;
           margin: 0 auto;
+        }
+
+        .report-container {
+          padding-bottom: 100px;
         }
 
         /* Header */
@@ -912,7 +919,7 @@ export default function Report({ setOpenMenu }) {
           justify-content: space-around;
           padding: 12px 20px;
           box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.08);
-          z-index: 1000;
+          z-index: 9999;
         }
 
         .nav-item {
@@ -1032,7 +1039,6 @@ export default function Report({ setOpenMenu }) {
           }
         }
       `}</style>
-    </div>
-  </RefreshWrapper>
+    </>
   );
 }

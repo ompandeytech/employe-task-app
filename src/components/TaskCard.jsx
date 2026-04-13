@@ -76,11 +76,14 @@ export default function TaskCard({
     noteButtons.push({ action: 'note-view', label: 'View Notes', icon: 'fa-eye', className: 'note-view' });
   }
 
+  const showReassignedBadge = status === "reassigned";
+
   return (
     <div className="task-card" style={{ borderLeft: `4px solid ${metadata.color}` }}>
       <div className={`status-badge status-badge--${status}`}>
         <i className={`fas ${metadata.icon}`}></i>
         <span>{metadata.label.toUpperCase()}</span>
+        {showReassignedBadge && <span className="status-badge__extra">REASSIGNED</span>}
       </div>
 
       <div className="task-content">
@@ -92,6 +95,14 @@ export default function TaskCard({
             <i className="fas fa-user"></i>
             <span>Assigned To: {assignedTo}</span>
           </div>
+          {task.reassignedBy && (
+            <div className="task-reassigned-info">
+              <span role="img" aria-label="reassigned">
+                🔁
+              </span>
+              <span>Reassigned by: {task.reassignedBy}</span>
+            </div>
+          )}
           <div className="detail-item">
             <i className="fas fa-info-circle"></i>
             <span>Status: {metadata.label}</span>
@@ -112,10 +123,16 @@ export default function TaskCard({
               <span>Since: {formatDate(task.pendingAt)}</span>
             </div>
           )}
-          {status === 'reassigned' && task.reassignedTo && (
+          {status === 'reassigned' && (task.reassignedToName || task.reassignedTo) && (
             <div className="detail-item">
               <i className="fas fa-user-plus"></i>
-              <span>Reassigned to: {task.reassignedTo}</span>
+              <span>Reassigned to: {task.reassignedToName || task.reassignedTo}</span>
+            </div>
+          )}
+          {status === 'reassigned' && task.reassignedBy && (
+            <div className="detail-item reassigned-by">
+              <i className="fas fa-user-check"></i>
+              <span>Reassigned by: {task.reassignedBy}</span>
             </div>
           )}
           {status === 'reassigned' && task.reassignedAt && (
@@ -141,12 +158,21 @@ export default function TaskCard({
           </div>
         )}
 
-        {status !== 'pending' && task.reassignReason && (
+        {status === 'reassigned' && task.reassignReason && (
           <div className="task-reason">
             <i className="fas fa-exclamation-triangle"></i>
             <div>
               <strong>Reason:</strong> {task.reassignReason}
             </div>
+          </div>
+        )}
+
+        {task.reassignedBy && (
+          <div className="task-reassigned-info">
+            <span role="img" aria-label="reassigned">
+              🔁
+            </span>
+            <span>Reassigned by: {task.reassignedBy}</span>
           </div>
         )}
       </div>

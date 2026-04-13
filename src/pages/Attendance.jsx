@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { API_BASE, getAuthHeaders } from "../utils/apiConfig";
@@ -129,6 +130,7 @@ export default function Attendance() {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const lunchTimerRef = useRef(null);
+  const modalRoot = typeof document !== "undefined" ? document.body : null;
   const handleBack = () => {
     if (window.history.length > 1) {
       navigate(-1);
@@ -879,57 +881,59 @@ export default function Attendance() {
           {saving ? "Saving..." : "Submit Leave"}
         </button>
       </div>
-      {modalOpen && (
-        <div className="camera-modal">
-          <div className="camera-dialog">
-            <h3>Capture Attendance Photo</h3>
-        {cameraError && <p className="camera-error">{cameraError}</p>}
-            <video
-              ref={videoRef}
-              autoPlay
-              muted
-              playsInline
-              className={`camera-video ${
-                locationStatus === "inside"
-                  ? "inside"
-                  : locationStatus === "outside"
-                  ? "outside"
-                  : ""
-              }`}
-            />
-            <canvas ref={canvasRef} style={{ display: "none" }} />
-            <p className="camera-hint">
-              Location:{" "}
-              {locationForPunch
-                ? `${locationForPunch.lat.toFixed(6)}, ${locationForPunch.lng.toFixed(6)}`
-                : "Waiting for GPS..."}
-            </p>
-            {locationStatus === "outside" && (
-              <p className="camera-warning">You are outside office location</p>
-            )}
-            <div className="camera-actions">
-            <button
-              className="punch-btn"
-              onClick={capturePhotoAndSubmit}
-              disabled={saving || cameraLoading || locationStatus !== "inside"}
-            >
-              Capture & Submit
-            </button>
-              <button className="punch-btn secondary" onClick={handleCameraCancel}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="camera-switch-btn"
-                onClick={handleSwitchCamera}
-                disabled={cameraLoading}
-              >
-                Switch to {cameraFacingMode === "user" ? "Back" : "Front"} Camera
-              </button>
+      {modalOpen && modalRoot &&
+        createPortal(
+          <div className="camera-modal">
+            <div className="camera-dialog">
+              <h3>Capture Attendance Photo</h3>
+              {cameraError && <p className="camera-error">{cameraError}</p>}
+              <video
+                ref={videoRef}
+                autoPlay
+                muted
+                playsInline
+                className={`camera-video ${
+                  locationStatus === "inside"
+                    ? "inside"
+                    : locationStatus === "outside"
+                    ? "outside"
+                    : ""
+                }`}
+              />
+              <canvas ref={canvasRef} style={{ display: "none" }} />
+              <p className="camera-hint">
+                Location:{" "}
+                {locationForPunch
+                  ? `${locationForPunch.lat.toFixed(6)}, ${locationForPunch.lng.toFixed(6)}`
+                  : "Waiting for GPS..."}
+              </p>
+              {locationStatus === "outside" && (
+                <p className="camera-warning">You are outside office location</p>
+              )}
+              <div className="camera-actions">
+                <button
+                  className="punch-btn"
+                  onClick={capturePhotoAndSubmit}
+                  disabled={saving || cameraLoading || locationStatus !== "inside"}
+                >
+                  Capture & Submit
+                </button>
+                <button className="punch-btn secondary" onClick={handleCameraCancel}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="camera-switch-btn"
+                  onClick={handleSwitchCamera}
+                  disabled={cameraLoading}
+                >
+                  Switch to {cameraFacingMode === "user" ? "Back" : "Front"} Camera
+                </button>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          modalRoot
+        )}
     </div>
   </RefreshWrapper>
   );

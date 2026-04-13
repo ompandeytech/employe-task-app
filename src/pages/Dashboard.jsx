@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTaskContext } from "../context/taskContextStore";
 import NotificationBell from "../components/NotificationBell";
@@ -32,16 +32,17 @@ export default function Dashboard({ setOpenMenu }) {
   }, [refreshTasks]);
 
   return (
-    <RefreshWrapper onRefresh={handleDashboardRefresh}>
-      <div className="home-screen">
-      {/* Top Navbar */}
-      <div className="top-navbar">
-        <button className="menu-icon" onClick={() => setOpenMenu(true)}>
-          <i className="fas fa-bars"></i>
-        </button>
-        <span className="app-name">Apna Task</span>
-        <NotificationBell />
-      </div>
+    <>
+      <RefreshWrapper onRefresh={handleDashboardRefresh}>
+        <div className="home-screen">
+          {/* Top Navbar */}
+          <div className="top-navbar">
+            <button className="menu-icon" onClick={() => setOpenMenu(true)}>
+              <i className="fas fa-bars"></i>
+            </button>
+            <span className="app-name">Apna Task</span>
+            <NotificationBell />
+          </div>
 
       {/* Welcome Section */}
       <div className="welcome-section">
@@ -118,25 +119,27 @@ export default function Dashboard({ setOpenMenu }) {
           <i className="fas fa-lightbulb"></i>
         </div>
       </div>
+    </div>
+  </RefreshWrapper>
 
       {/* Soft Bottom Navigation */}
       <div className="soft-bottom-nav">
         <div className="nav-item active" onClick={() => navigate("/")}>
           <i className="fas fa-home"></i>
           <span>Home</span>
-        </div>
-        <div className="nav-item" onClick={() => navigate("/tasks")}>
-          <i className="fas fa-tasks"></i>
-          <span>Tasks</span>
-        </div>
-        <div className="nav-item" onClick={() => navigate("/report")}>
-          <i className="fas fa-chart-line"></i>
-          <span>Report</span>
-        </div>
-        <div className="nav-item" onClick={() => navigate("/profile")}>
-          <i className="fas fa-user"></i>
-          <span>Profile</span>
-        </div>
+    </div>
+    <div className="nav-item" onClick={() => navigate("/tasks")}>
+      <i className="fas fa-tasks"></i>
+      <span>Tasks</span>
+    </div>
+    <div className="nav-item" onClick={() => navigate("/report")}>
+      <i className="fas fa-chart-line"></i>
+      <span>Report</span>
+    </div>
+    <div className="nav-item" onClick={() => navigate("/profile")}>
+      <i className="fas fa-user"></i>
+      <span>Profile</span>
+    </div>
       </div>
 
       <style>{`
@@ -151,12 +154,11 @@ export default function Dashboard({ setOpenMenu }) {
         }
 
         .home-screen {
-          min-height: 100vh;
+          height: 100%;
           background: #f8fafc;
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-          padding-bottom: 80px;
+          padding-bottom: calc(100px + env(safe-area-inset-bottom));
           margin: 0;
-          padding: 0;
           overflow-x: hidden;
           width: 100%;
           max-width: 100%;
@@ -471,7 +473,6 @@ export default function Dashboard({ setOpenMenu }) {
           }
         }
       `}</style>
-    </div>
-  </RefreshWrapper>
+    </>
   );
 }
