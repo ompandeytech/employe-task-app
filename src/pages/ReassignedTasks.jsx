@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTaskContext } from "../context/taskContextStore";
+import axios from "axios";
+import { API_BASE, getAuthHeaders } from "../utils/apiConfig";
 import { fetchTaskNotes } from "../utils/taskNotes";
 import TaskCard from "../components/TaskCard";
 import RefreshWrapper from "../components/RefreshWrapper";
@@ -14,6 +16,7 @@ export default function ReassignedTasks() {
   const [notesList, setNotesList] = useState([]);
   const [noteLoading, setNoteLoading] = useState(false);
   const [noteError, setNoteError] = useState('');
+  const [assignedByMeTasks, setAssignedByMeTasks] = useState([]);
 
   // Refresh tasks on mount to ensure latest reassigned tasks are visible
   useEffect(() => {
@@ -22,23 +25,55 @@ export default function ReassignedTasks() {
 
   const [activeTab, setActiveTab] = useState("assignedToMe");
   const reassignedTasks = getTasksByStatus("reassigned");
-  const currentUser = useMemo(() => {
+  const user = useMemo(() => {
     const stored = localStorage.getItem("user");
-    if (!stored) return {};
+    if (!stored) return null;
     try {
       return JSON.parse(stored);
-    } catch {
-      return {};
+    } catch (err) {
+      console.error("Failed to parse stored user", err);
+      return null;
     }
   }, []);
   const currentUserName =
-    currentUser?.name ||
-    currentUser?.fullName ||
-    currentUser?.employee_name ||
-    currentUser?.userName ||
+    user?.name ||
+    user?.fullName ||
+    user?.employee_name ||
+    user?.userName ||
     "";
   const normalize = (value) => String(value || "").trim().toLowerCase();
   const normalizedCurrentUserName = normalize(currentUserName);
+
+  const fetchAssignedByMeTasks = useCallback(async () => {
+    const userId =
+      user?.id ??
+      user?.user_id ??
+      user?.userId ??
+      user?.employee_id ??
+      user?.employeeId ??
+      null;
+
+    if (!userId) return;
+
+    try {
+      const res = await axios.get(`${API_BASE}/tasks/reassigned-by/${userId}`, {
+        headers: getAuthHeaders(),
+      });
+      setAssignedByMeTasks(res.data || []);
+    } catch (err) {
+      console.error("Failed to fetch reassigned tasks", err);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    fetchAssignedByMeTasks();
+  }, [fetchAssignedByMeTasks]);
+
+  useEffect(() => {
+    if (activeTab === "assignedByMe") {
+      fetchAssignedByMeTasks();
+    }
+  }, [activeTab, fetchAssignedByMeTasks]);
 
   const assignedNamesIncludeCurrent = (assignedTo) => {
     if (!normalizedCurrentUserName || !assignedTo) return false;
@@ -51,11 +86,6 @@ export default function ReassignedTasks() {
     return namesArray.some((name) => normalize(name) === normalizedCurrentUserName);
   };
 
-  const assignedByMe = tasks.filter(
-    (task) =>
-      task.reassignedBy && normalize(task.reassignedBy) === normalizedCurrentUserName
-  );
-
   const assignedToMe = tasks.filter(
     (task) =>
       assignedNamesIncludeCurrent(task.assignedTo) &&
@@ -64,7 +94,7 @@ export default function ReassignedTasks() {
   );
 
   const filteredTasks =
-    activeTab === "assignedByMe" ? assignedByMe : assignedToMe;
+    activeTab === "assignedByMe" ? assignedByMeTasks : assignedToMe;
 
   const handleReassignedRefresh = useCallback(async () => {
     if (!refreshTasks) return;
@@ -124,6 +154,13 @@ export default function ReassignedTasks() {
       setSelectedTask(task);
       setModalType(action);
       setShowModal(true);
+      return;
+    }
+
+    if (action === 'in-progress') {
+      updateTaskStatus(task.id, 'in_progress', {
+        startedAt: new Date().toISOString()
+      });
       return;
     }
 
@@ -196,11 +233,18 @@ export default function ReassignedTasks() {
               key={task.id}
               task={task}
               onAction={handleAction}
-              actions={[
-                { action: 'take-back', label: 'Take Back', icon: 'fa-undo', className: 'take-back' },
-                { action: 'done', label: 'Complete', icon: 'fa-circle-check', className: 'complete' },
-              ]}
-              showViewNotes={false}
+              actions={
+                activeTab === "assignedByMe"
+                  ? []
+                  : [
+                      { action: 'done', label: 'Done', icon: 'fa-circle-check', className: 'complete' },
+                      { action: 'in-progress', label: 'In Progress', icon: 'fa-spinner', className: 'in-progress' },
+                      { action: 'pending', label: 'Pending', icon: 'fa-clock', className: 'pending' },
+                      { action: 'reassign', label: 'Reassign', icon: 'fa-share', className: 'reassign' },
+                    ]
+              }
+              showAddNote={activeTab !== "assignedByMe"}
+              showViewNotes={activeTab !== "assignedByMe"}
             />
           ))
         )}
