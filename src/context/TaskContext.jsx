@@ -176,7 +176,7 @@ export const TaskProvider = ({ children }) => {
     const status = normalizeStatus(task.status);
 
     const resolveAssignedNames = () => {
-      const explicitNames = normalizeNameList(task.assigned_employee_names);
+      const explicitNames = normalizeNameList(task.assigned_employee_names ?? task.assigned_employees);
       if (explicitNames.length) return explicitNames;
 
       const assignedIds = parseIdList(task.assigned_employee_ids);
@@ -213,6 +213,7 @@ export const TaskProvider = ({ children }) => {
     const pendingAt = task.pendingAt ?? task.pending_at ?? (status === 'pending' ? createdAt : null);
     const reassignedBy = task.reassignedBy ?? task.reassigned_by ?? null;
     const reassignedToNameField = task.reassignedToName ?? task.reassigned_to_name ?? null;
+    const reassignedAt = task.reassignedAt ?? task.reassigned_at ?? null;
 
     return {
       ...task,
@@ -224,6 +225,7 @@ export const TaskProvider = ({ children }) => {
       reassignedTo,
       reassignedBy,
       reassignedToName: reassignedToNameField,
+      reassignedAt,
       createdAt,
       pendingReason,
       reassignReason,
@@ -545,7 +547,17 @@ export const TaskProvider = ({ children }) => {
     }
 
     // Update local state immediately for UI responsiveness
-    const updatedTask = { ...currentTask, ...additionalData, status: normalizedStatus };
+    const updatedTask = {
+      ...currentTask,
+      ...additionalData,
+      status: normalizedStatus,
+      reassigned_by:
+        additionalData.reassignedBy ?? currentTask.reassigned_by ?? null,
+      reassigned_to_name:
+        additionalData.reassignedToName ?? currentTask.reassigned_to_name ?? null,
+      reassigned_at:
+        additionalData.reassignedAt ?? currentTask.reassigned_at ?? null,
+    };
     const updatedTasks = tasks.map(t => t.id === taskId ? updatedTask : t);
     const updatedTodayTasks = todayTasks.map(t => t.id === taskId ? updatedTask : t);
     setTaskState(prev => ({ ...prev, tasks: updatedTasks, todayTasks: updatedTodayTasks }));

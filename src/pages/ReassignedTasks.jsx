@@ -42,7 +42,12 @@ export default function ReassignedTasks() {
 
   const assignedNamesIncludeCurrent = (assignedTo) => {
     if (!normalizedCurrentUserName || !assignedTo) return false;
-    const namesArray = Array.isArray(assignedTo) ? assignedTo : [assignedTo];
+    let namesArray;
+    if (Array.isArray(assignedTo)) {
+      namesArray = assignedTo;
+    } else {
+      namesArray = String(assignedTo).split(",").map((name) => name.trim()).filter(Boolean);
+    }
     return namesArray.some((name) => normalize(name) === normalizedCurrentUserName);
   };
 
