@@ -12,6 +12,15 @@ const getUserId = (user) =>
   user?.id ?? user?.user_id ?? user?.userId ?? user?.employee_id ?? user?.employeeId ?? null;
 
 const toDateString = (date) => date.toISOString().slice(0, 10);
+const getRecordDateString = (value) => {
+  if (!value) return null;
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return value;
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return toDateString(date);
+};
 const formatDate = (value) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value || "-";
@@ -265,8 +274,16 @@ export default function Attendance() {
     ]);
   }, [loadTodayAttendance, loadEmployeeHistory]);
 
+  const todayIso = useMemo(() => toDateString(new Date()), [time]);
+  const isTodayAttendanceRecord =
+    getRecordDateString(todayAttendance?.date) === todayIso;
+  const lunchInRecorded = isTodayAttendanceRecord && Boolean(todayAttendance?.lunch_in);
+  const lunchOutRecorded = isTodayAttendanceRecord && Boolean(todayAttendance?.lunch_out);
+  const lunchCompleted = lunchInRecorded && lunchOutRecorded;
+  const showLunchOut = lunchInRecorded && !lunchOutRecorded;
+
   useEffect(() => {
-    if (!todayAttendance) {
+    if (!todayAttendance || !isTodayAttendanceRecord) {
       setLunchActive(false);
       setLunchStartTime(null);
       setLunchEndTime(null);
@@ -277,7 +294,7 @@ export default function Attendance() {
     setLunchStartTime(start);
     setLunchEndTime(end);
     setLunchActive(Boolean(start && !end));
-  }, [todayAttendance]);
+  }, [todayAttendance, isTodayAttendanceRecord]);
 
   useEffect(() => {
     if (lunchActive && lunchStartTime) {
@@ -309,7 +326,6 @@ export default function Attendance() {
     return () => clearTimeout(fallbackTimer);
   }, []);
 
-  const todayIso = useMemo(() => toDateString(new Date()), [time]);
   const hasCheckedIn = Boolean(todayAttendance?.in_time);
   const hasCheckedOut = Boolean(todayAttendance?.out_time);
   const checkInDisabled = hasCheckedIn;
@@ -469,6 +485,18 @@ export default function Attendance() {
       setError("User not logged in properly");
       return false;
     }
+    if (lunchCompleted) {
+      setStatusMessage("Lunch already completed for today.");
+      return false;
+    }
+    if (lunchType === "lunch_in" && lunchInRecorded) {
+      setStatusMessage("Lunch In already recorded for today.");
+      return false;
+    }
+    if (lunchType === "lunch_out" && lunchOutRecorded) {
+      setStatusMessage("Lunch Out already recorded for today.");
+      return false;
+    }
     setError("");
     setStatusMessage("");
 
@@ -496,8 +524,8 @@ export default function Attendance() {
   };
 
   const handleLunchToggle = async () => {
-    if (lunchSaving) return;
-    const type = lunchActive ? "lunch_out" : "lunch_in";
+    if (lunchSaving || lunchCompleted) return;
+    const type = showLunchOut ? "lunch_out" : "lunch_in";
     const now = new Date();
     const iso = now.toISOString();
     const formattedTime = now.toTimeString().slice(0, 5);
@@ -751,7 +779,6 @@ export default function Attendance() {
       </header>
 
       <div className="greeting">
-        <h3>Good Morning, {userName} 👋</h3>
         <p>
           {formatDate(new Date())} • {time.toLocaleTimeString()}
         </p>
@@ -802,11 +829,11 @@ export default function Attendance() {
         <div className="lunch-action">
           <button
             type="button"
-            className={`lunch-toggle-btn ${lunchActive ? "lunch-out" : "lunch-in"}`}
+            className={`lunch-toggle-btn ${showLunchOut ? "lunch-out" : "lunch-in"}`}
             onClick={handleLunchToggle}
-            disabled={lunchSaving || saving || preparingPunch}
+            disabled={lunchSaving || saving || preparingPunch || lunchCompleted}
           >
-            {lunchActive ? "Lunch Out" : "Lunch In"}
+            {lunchCompleted ? "Lunch Completed" : showLunchOut ? "Lunch Out" : "Lunch In"}
           </button>
         </div>
         {lunchActive && lunchStartTime && (

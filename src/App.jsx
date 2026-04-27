@@ -10,6 +10,9 @@ import Report from "./pages/Report";
 import Profile from "./pages/Profile";
 import Attendance from "./pages/Attendance";
 import Salary from "./pages/Salary";
+import Sales from "./pages/Sales";
+import Manufacture from "./pages/Manufacture";
+import Rto from "./pages/Rto";
 import Welcome from "./pages/Welcome";
 import Login from "./pages/Login";
 import DoneTasks from "./pages/DoneTasks";
@@ -224,6 +227,30 @@ function App() {
                 element={
                   <ProtectedRoute>
                     <Salary setOpenMenu={setOpenMenu} />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/sales"
+                element={
+                  <ProtectedRoute>
+                    <Sales setOpenMenu={setOpenMenu} />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/manufacture"
+                element={
+                  <ProtectedRoute>
+                    <Manufacture />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/rto"
+                element={
+                  <ProtectedRoute>
+                    <Rto />
                   </ProtectedRoute>
                 }
               />

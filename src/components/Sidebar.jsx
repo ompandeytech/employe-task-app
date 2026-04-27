@@ -48,6 +48,21 @@ export default function Sidebar({ openMenu, setOpenMenu }) {
                 <i className="fas fa-wallet"></i>
                 <span>Salary</span>
               </div>
+
+              <div className="menu-item" onClick={() => navigate("/sales")}>
+                <i className="fas fa-box"></i>
+                <span>Sales</span>
+              </div>
+
+              <div className="menu-item" onClick={() => navigate("/manufacture")}>
+                <i className="fas fa-industry"></i>
+                <span>Manufacture</span>
+              </div>
+
+              <div className="menu-item" onClick={() => navigate("/rto")}>
+                <i className="fas fa-sync-alt"></i>
+                <span>RTO</span>
+              </div>
             </div>
           </div>
         </div>
