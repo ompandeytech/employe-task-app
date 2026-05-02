@@ -1,9 +1,20 @@
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
 
+const FIXED_PAGES = ["attendance", "tasks", "report", "profile"];
+const DYNAMIC_PAGES = ["sales", "manufacture", "rto"];
+
 export default function Sidebar({ openMenu, setOpenMenu }) {
   const navigate = useNavigate();
   const [closing, setClosing] = useState(false);
+  const permissions = JSON.parse(localStorage.getItem("permissions") || "[]");
+
+  function hasAccess(page) {
+    if (FIXED_PAGES.includes(page)) return true;
+    if (!DYNAMIC_PAGES.includes(page)) return true;
+    if (!permissions || permissions.length === 0) return true;
+    return permissions.includes(page);
+  }
 
   const handleClose = () => {
     setClosing(true);
@@ -49,20 +60,26 @@ export default function Sidebar({ openMenu, setOpenMenu }) {
                 <span>Salary</span>
               </div>
 
-              <div className="menu-item" onClick={() => navigate("/sales")}>
-                <i className="fas fa-box"></i>
-                <span>Sales</span>
-              </div>
+              {hasAccess("sales") && (
+                <div className="menu-item" onClick={() => navigate("/sales")}>
+                  <i className="fas fa-box"></i>
+                  <span>Sales</span>
+                </div>
+              )}
 
-              <div className="menu-item" onClick={() => navigate("/manufacture")}>
-                <i className="fas fa-industry"></i>
-                <span>Manufacture</span>
-              </div>
+              {hasAccess("manufacture") && (
+                <div className="menu-item" onClick={() => navigate("/manufacture")}>
+                  <i className="fas fa-industry"></i>
+                  <span>Manufacture</span>
+                </div>
+              )}
 
-              <div className="menu-item" onClick={() => navigate("/rto")}>
-                <i className="fas fa-sync-alt"></i>
-                <span>RTO</span>
-              </div>
+              {hasAccess("rto") && (
+                <div className="menu-item" onClick={() => navigate("/rto")}>
+                  <i className="fas fa-sync-alt"></i>
+                  <span>RTO</span>
+                </div>
+              )}
             </div>
           </div>
         </div>

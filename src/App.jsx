@@ -192,7 +192,7 @@ function App() {
               <Route
                 path="/tasks"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute page="tasks">
                     <Tasks setOpenMenu={setOpenMenu} />
                   </ProtectedRoute>
                 }
@@ -200,7 +200,7 @@ function App() {
               <Route
                 path="/report"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute page="report">
                     <Report setOpenMenu={setOpenMenu} />
                   </ProtectedRoute>
                 }
@@ -217,7 +217,7 @@ function App() {
               <Route
                 path="/attendance"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute page="attendance">
                     <Attendance setOpenMenu={setOpenMenu} />
                   </ProtectedRoute>
                 }
@@ -233,7 +233,7 @@ function App() {
               <Route
                 path="/sales"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute page="sales">
                     <Sales setOpenMenu={setOpenMenu} />
                   </ProtectedRoute>
                 }
@@ -241,7 +241,7 @@ function App() {
               <Route
                 path="/manufacture"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute page="manufacture">
                     <Manufacture />
                   </ProtectedRoute>
                 }
@@ -249,7 +249,7 @@ function App() {
               <Route
                 path="/rto"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute page="rto">
                     <Rto />
                   </ProtectedRoute>
                 }
@@ -258,7 +258,7 @@ function App() {
               <Route
                 path="/done"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute page="tasks">
                     <DoneTasks />
                   </ProtectedRoute>
                 }
@@ -266,7 +266,7 @@ function App() {
               <Route
                 path="/inprogress"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute page="tasks">
                     <InProgressTasks />
                   </ProtectedRoute>
                 }
@@ -274,7 +274,7 @@ function App() {
               <Route
                 path="/pending"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute page="tasks">
                     <PendingTasks setOpenMenu={setOpenMenu} />
                   </ProtectedRoute>
                 }
@@ -282,7 +282,7 @@ function App() {
               <Route
                 path="/reassigned"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute page="tasks">
                     <ReassignedTasks />
                   </ProtectedRoute>
                 }

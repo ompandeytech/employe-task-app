@@ -55,6 +55,7 @@ export default function Login({ onSuccess }) {
       localStorage.clear();
       sessionStorage.clear();
       localStorage.setItem("user", JSON.stringify(userForApp));
+      localStorage.setItem("permissions", JSON.stringify(rawUser.app_permissions || []));
       window.dispatchEvent(new Event("tasks:refresh"));
       onSuccess?.();
       navigate("/");
