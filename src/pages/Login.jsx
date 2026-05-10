@@ -1,4 +1,4 @@
-﻿import { useState } from "react";
+﻿import { useState, useEffect } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 
@@ -7,8 +7,21 @@ const API_BASE = "https://techiohisab.com/api";
 export default function Login({ onSuccess }) {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
+  const [pin, setPin] = useState("");
+  const [loginMode, setLoginMode] = useState("password");
+  const [quickSessionToken, setQuickSessionToken] = useState(
+    localStorage.getItem("quickSessionToken") || ""
+  );
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    const storedQuickSession = localStorage.getItem("quickSessionToken");
+
+    if (storedQuickSession) {
+      setQuickSessionToken(storedQuickSession);
+      setLoginMode("pin");
+    }
+  }, []);
 
   const handleLogin = async () => {
     const normalizedEmail = email.trim().toLowerCase();
@@ -55,6 +68,9 @@ export default function Login({ onSuccess }) {
       localStorage.clear();
       sessionStorage.clear();
       localStorage.setItem("user", JSON.stringify(userForApp));
+      if (data.quickSessionToken) {
+        localStorage.setItem("quickSessionToken", data.quickSessionToken);
+      }
       localStorage.setItem("permissions", JSON.stringify(rawUser.app_permissions || []));
       window.dispatchEvent(new Event("tasks:refresh"));
       onSuccess?.();
@@ -99,51 +115,124 @@ export default function Login({ onSuccess }) {
     }
   };
 
+  const handlePinLogin = async () => {
+    if (!pin || pin.length !== 4) {
+      alert("Enter valid 4 digit PIN");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const res = await axios.post(`${API_BASE}/auth/verify-pin`, {
+        pin,
+        quickSessionToken,
+      });
+
+      const data = res.data;
+
+      localStorage.setItem("user", JSON.stringify(data.user));
+      if (data.quickSessionToken) {
+        localStorage.setItem("quickSessionToken", data.quickSessionToken);
+      }
+      onSuccess?.();
+      navigate("/");
+    } catch {
+      alert("Invalid PIN");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="login-wrapper">
       <div className="login-card">
         <div className="login-header">
           <div className="logo-circle">
-  <i className="fa-solid fa-user-tie"></i>
-</div>
+            <i className="fa-solid fa-user-tie"></i>
+          </div>
 
           <h2>Welcome Back</h2>
           <p>Sign in to your employee dashboard</p>
         </div>
 
-        <div className="input-group">
-          <label>Email</label>
-          <input
-            type="email"
-            autoCapitalize="none"
-            autoCorrect="off"
-            autoComplete="username"
-            spellCheck={false}
-            placeholder="you@example.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-        </div>
+        {quickSessionToken ? (
+          <div className="mode-switch">
+            <button
+              type="button"
+              className={`mode-btn ${loginMode === "password" ? "active" : ""}`}
+              onClick={() => setLoginMode("password")}
+            >
+              Password
+            </button>
+            <button
+              type="button"
+              className={`mode-btn ${loginMode === "pin" ? "active" : ""}`}
+              onClick={() => setLoginMode("pin")}
+            >
+              PIN
+            </button>
+          </div>
+        ) : null}
 
-        <div className="input-group">
-          <label>Password</label>
-          <input
-            type="password"
-            autoCapitalize="none"
-            autoCorrect="off"
-            autoComplete="current-password"
-            spellCheck={false}
-            placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </div>
+        {loginMode === "password" ? (
+          <>
+            <div className="input-group">
+              <label>Email</label>
+              <input
+                type="email"
+                autoCapitalize="none"
+                autoCorrect="off"
+                autoComplete="username"
+                spellCheck={false}
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </div>
 
-        <button className="primary-btn" onClick={handleLogin} disabled={loading}>
-          {loading ? "Signing in..." : "Login to Dashboard"}
-        </button>
+            <div className="input-group">
+              <label>Password</label>
+              <input
+                type="password"
+                autoCapitalize="none"
+                autoCorrect="off"
+                autoComplete="current-password"
+                spellCheck={false}
+                placeholder="********"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
 
-        <p className="footer-text">Secure login â€¢ Powered by your system</p>
+            <button className="primary-btn" onClick={handleLogin} disabled={loading}>
+              {loading ? "Signing in..." : "Login to Dashboard"}
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="input-group">
+              <label>PIN</label>
+              <input
+                type="password"
+                inputMode="numeric"
+                autoCapitalize="none"
+                autoCorrect="off"
+                autoComplete="one-time-code"
+                spellCheck={false}
+                maxLength={4}
+                placeholder="****"
+                value={pin}
+                onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
+              />
+            </div>
+
+            <button className="primary-btn" onClick={handlePinLogin} disabled={loading}>
+              {loading ? "Verifying..." : "Verify PIN"}
+            </button>
+          </>
+        )}
+
+        <p className="footer-text">Secure login - Powered by your system</p>
       </div>
 
       <style>{`
@@ -229,6 +318,29 @@ export default function Login({ onSuccess }) {
         .input-group input:focus {
           border-color: #4f46e5;
           box-shadow: 0 0 0 2px rgba(79,70,229,0.15);
+        }
+
+        .mode-switch {
+          display: flex;
+          gap: 8px;
+          margin-bottom: 14px;
+        }
+
+        .mode-btn {
+          flex: 1;
+          padding: 10px;
+          border-radius: 10px;
+          border: 1px solid #e5e7eb;
+          background: #f9fafb;
+          color: #374151;
+          font-size: 14px;
+          cursor: pointer;
+        }
+
+        .mode-btn.active {
+          background: linear-gradient(135deg, #4f46e5, #06b6d4);
+          color: white;
+          border-color: transparent;
         }
 
         .primary-btn {

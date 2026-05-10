@@ -171,7 +171,8 @@ export default function Dashboard({ setOpenMenu }) {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 0 10px;
+          padding: 0 10px 0;
+          padding-top: calc(env(safe-area-inset-top, 0px) + 10px);
           box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
           width: 100%;
         }

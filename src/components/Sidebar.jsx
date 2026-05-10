@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router-dom";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import client from "../api/client";
 
 const FIXED_PAGES = ["attendance", "tasks", "report", "profile"];
 const DYNAMIC_PAGES = ["sales", "manufacture", "rto"];
@@ -7,7 +8,34 @@ const DYNAMIC_PAGES = ["sales", "manufacture", "rto"];
 export default function Sidebar({ openMenu, setOpenMenu }) {
   const navigate = useNavigate();
   const [closing, setClosing] = useState(false);
-  const permissions = JSON.parse(localStorage.getItem("permissions") || "[]");
+  const [permissions, setPermissions] = useState(
+  JSON.parse(localStorage.getItem("permissions") || "[]")
+);
+
+useEffect(() => {
+  const fetchPermissions = async () => {
+    try {
+      const { data } = await client.get("/auth/me");
+
+      const latestPermissions = data.app_permissions || [];
+
+      localStorage.setItem(
+        "permissions",
+        JSON.stringify(latestPermissions)
+      );
+
+      setPermissions(latestPermissions);
+    } catch (err) {
+      console.error("Permission refresh failed", err);
+    }
+  };
+
+  fetchPermissions();
+
+  const interval = setInterval(fetchPermissions, 5000);
+
+  return () => clearInterval(interval);
+}, []);
 
   function hasAccess(page) {
     if (FIXED_PAGES.includes(page)) return true;

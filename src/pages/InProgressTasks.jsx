@@ -24,6 +24,8 @@ export default function InProgressTasks() {
   const [showModal, setShowModal] = useState(false);
   const [modalType, setModalType] = useState('');
   const [selectedTask, setSelectedTask] = useState(null);
+  const [rating, setRating] = useState(0);
+  const [feedback, setFeedback] = useState('');
   const [pendingReason, setPendingReason] = useState('');
   const [reassignEmployee, setReassignEmployee] = useState('');
   const [reassignReason, setReassignReason] = useState('');
@@ -75,6 +77,8 @@ export default function InProgressTasks() {
     setSelectedTask(task);
     setModalType(action);
     setShowModal(true);
+    setRating(0);
+    setFeedback('');
     setPendingReason('');
     setReassignEmployee('');
     setReassignReason('');
@@ -102,10 +106,29 @@ export default function InProgressTasks() {
     let additionalData = {};
     
     switch(modalType) {
-      case 'done':
-        additionalData = { completedAt: new Date().toISOString() };
-        await updateTaskStatus(selectedTask.id, 'done', additionalData);
-        break;
+      case "done":
+  additionalData = {
+    completedAt: new Date().toISOString(),
+  };
+
+  await axios.post(
+    `${API_BASE}/tasks/${selectedTask.id}/employee-feedback`,
+    {
+      rating,
+      feedback,
+    },
+    {
+      headers: getAuthHeaders(),
+    }
+  );
+
+  await updateTaskStatus(
+    selectedTask.id,
+    "done",
+    additionalData
+  );
+
+  break;
       case 'pending':
         additionalData = { 
           pendingReason: pendingReason,
@@ -151,6 +174,8 @@ export default function InProgressTasks() {
     setShowModal(false);
     setSelectedTask(null);
     setModalType('');
+    setRating(0);
+    setFeedback('');
     setPendingReason('');
     setReassignEmployee('');
     setReassignReason('');
@@ -202,14 +227,43 @@ export default function InProgressTasks() {
               {/* Done Modal */}
               {modalType === 'done' && (
                 <>
-                  <div className="modal-icon done">
-                    <i className="fas fa-circle-check"></i>
+                  <div className="done-modal-header">
+                    <div className="done-modal-badge">
+                      <i className="fas fa-star"></i>
+                    </div>
+                    <div>
+                      <h3 className="modal-title">Rating</h3>
+                      <p className="done-modal-subtitle">Share how this task went.</p>
+                    </div>
                   </div>
-                  <h3 className="modal-title">Mark Task as Done?</h3>
-                  <p className="modal-message">Are you sure you have completed this task?</p>
+
+                  <div className="rating-stars" aria-label="Task rating">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={star}
+                        type="button"
+                        className={`rating-star ${rating >= star ? 'active' : ''}`}
+                        onClick={() => setRating(star)}
+                        aria-label={`${star} star${star > 1 ? 's' : ''}`}
+                      >
+                        <i className="fas fa-star"></i>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="modal-input modal-input--feedback">
+                    <label>Feedback</label>
+                    <textarea
+                      value={feedback}
+                      onChange={(e) => setFeedback(e.target.value)}
+                      placeholder="Type your feedback..."
+                      rows={4}
+                    />
+                  </div>
+
                   <div className="modal-actions">
                     <button className="btn-cancel" onClick={closeModal}>Cancel</button>
-                    <button className="btn-confirm done" onClick={confirmAction}>Confirm</button>
+                    <button className="btn-confirm done" onClick={confirmAction}>Done</button>
                   </div>
                 </>
               )}
@@ -433,13 +487,40 @@ export default function InProgressTasks() {
 
         .modal-card {
           background: white;
-          border-radius: 20px;
-          padding: 24px;
+          border-radius: 28px;
+          padding: 22px;
           margin: 20px;
           max-width: 400px;
           width: 100%;
-          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+          box-shadow: 0 24px 70px rgba(45, 27, 105, 0.28);
+          border: 1px solid rgba(148, 163, 184, 0.15);
           animation: slideUp 0.3s ease;
+        }
+
+        .done-modal-header {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          margin-bottom: 18px;
+        }
+
+        .done-modal-badge {
+          width: 52px;
+          height: 52px;
+          border-radius: 18px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: white;
+          font-size: 20px;
+          background: linear-gradient(135deg, #8b5cf6, #2563eb);
+          box-shadow: 0 10px 24px rgba(99, 102, 241, 0.28);
+        }
+
+        .done-modal-subtitle {
+          margin: 4px 0 0;
+          font-size: 13px;
+          color: #64748b;
         }
 
         .modal-icon {
@@ -452,10 +533,6 @@ export default function InProgressTasks() {
           margin: 0 auto 16px;
           font-size: 24px;
           color: white;
-          background: linear-gradient(135deg, #10b981, #059669);
-        }
-
-        .modal-icon.done {
           background: linear-gradient(135deg, #10b981, #059669);
         }
 
@@ -486,6 +563,43 @@ export default function InProgressTasks() {
           margin-bottom: 20px;
         }
 
+        .rating-stars {
+          display: flex;
+          justify-content: center;
+          gap: 8px;
+          margin: 6px 0 18px;
+          flex-wrap: wrap;
+        }
+
+        .rating-star {
+          width: 48px;
+          height: 48px;
+          border: 1px solid #e2e8f0;
+          border-radius: 16px;
+          background: linear-gradient(180deg, #ffffff, #f8fafc);
+          color: #cbd5e1;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          transition: transform 0.18s ease, box-shadow 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+        }
+
+        .rating-star i {
+          font-size: 18px;
+        }
+
+        .rating-star.active {
+          color: #f59e0b;
+          border-color: rgba(245, 158, 11, 0.35);
+          box-shadow: 0 10px 22px rgba(245, 158, 11, 0.18);
+          background: linear-gradient(135deg, #fff7ed, #fff);
+        }
+
+        .rating-star:hover {
+          transform: translateY(-1px);
+        }
+
         .modal-input {
           margin-bottom: 16px;
         }
@@ -501,22 +615,41 @@ export default function InProgressTasks() {
         .modal-input input,
         .modal-input textarea {
           width: 100%;
-          padding: 10px 12px;
-          border: 1px solid #e5e7eb;
-          border-radius: 8px;
-          font-size: 13px;
+          padding: 12px 14px;
+          border: 1px solid #dbe4f0;
+          border-radius: 16px;
+          font-size: 14px;
           font-family: inherit;
+          background: #fafcff;
+          color: #0f172a;
+          transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
         }
 
         .modal-input textarea {
           resize: vertical;
+          min-height: 110px;
         }
 
         .modal-input input:focus,
         .modal-input textarea:focus {
           outline: none;
-          border-color: #3b82f6;
-          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+          border-color: #6366f1;
+          background: #ffffff;
+          box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.12);
+        }
+
+        .modal-input--feedback {
+          margin-bottom: 18px;
+        }
+
+        .modal-input label {
+          display: block;
+          font-size: 13px;
+          font-weight: 700;
+          color: #334155;
+          margin-bottom: 8px;
+          text-transform: none;
+          letter-spacing: 0;
         }
 
         .task-details-modal {
@@ -570,12 +703,12 @@ export default function InProgressTasks() {
         }
 
         .btn-cancel {
-          background: #f3f4f6;
-          color: #6b7280;
+          background: #eef2ff;
+          color: #4f46e5;
         }
 
         .btn-cancel:hover {
-          background: #e5e7eb;
+          background: #e0e7ff;
         }
 
         .btn-confirm {
@@ -583,12 +716,12 @@ export default function InProgressTasks() {
         }
 
         .btn-confirm.complete {
-          background: linear-gradient(135deg, #10b981, #059669);
+          background: linear-gradient(135deg, #8b5cf6, #2563eb);
         }
 
         .btn-confirm.complete:hover {
           transform: translateY(-1px);
-          box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+          box-shadow: 0 10px 22px rgba(99, 102, 241, 0.28);
         }
 
         .btn-confirm.pending {
@@ -610,12 +743,12 @@ export default function InProgressTasks() {
         }
 
         .btn-confirm.done {
-          background: linear-gradient(135deg, #10b981, #059669);
+          background: linear-gradient(135deg, #8b5cf6, #2563eb);
         }
 
         .btn-confirm.done:hover {
           transform: translateY(-1px);
-          box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+          box-shadow: 0 10px 22px rgba(99, 102, 241, 0.28);
         }
 
         /* Soft Bottom Navigation */
@@ -694,6 +827,32 @@ export default function InProgressTasks() {
 
         /* Responsive Design */
         @media (max-width: 480px) {
+          .modal-card {
+            width: calc(100% - 24px);
+            padding: 18px;
+            border-radius: 24px;
+          }
+
+          .done-modal-header {
+            gap: 12px;
+          }
+
+          .done-modal-badge {
+            width: 48px;
+            height: 48px;
+            border-radius: 16px;
+          }
+
+          .rating-stars {
+            gap: 10px;
+          }
+
+          .rating-star {
+            width: 44px;
+            height: 44px;
+            border-radius: 14px;
+          }
+
           .detail-row {
             flex-direction: column;
             gap: 4px;

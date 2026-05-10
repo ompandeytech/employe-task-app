@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import NotificationBell from "../components/NotificationBell";
 import { useNotificationContext } from "../context/NotificationContext";
 import RefreshWrapper from "../components/RefreshWrapper";
 
@@ -43,7 +42,7 @@ const defaultProfile = {
   phone: "",
 };
 
-export default function Profile({ setOpenMenu }) {
+export default function Profile() {
   const navigate = useNavigate();
   const {
     notifyTaskAssigned,
@@ -153,14 +152,6 @@ export default function Profile({ setOpenMenu }) {
       <RefreshWrapper onRefresh={handleProfileRefresh}>
         <div className="profile-dashboard profile-container">
       {/* Header */}
-      <div className="profile-header">
-        <button className="menu-btn" onClick={() => setOpenMenu(true)}>
-          <i className="fas fa-bars"></i>
-        </button>
-        <h1 className="page-title">Profile</h1>
-        <NotificationBell />
-      </div>
-
       {/* Main Content */}
       <div className="profile-content">
         {/* Profile Card */}
@@ -470,8 +461,8 @@ export default function Profile({ setOpenMenu }) {
 
         .profile-dashboard {
           min-height: 100vh;
-          background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-          padding: 20px 16px 100px;
+          background: #f8fafc;
+          padding: 0 16px 100px;
           max-width: 480px;
           margin: 0 auto;
         }
@@ -485,7 +476,8 @@ export default function Profile({ setOpenMenu }) {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 16px 0;
+          padding: 0 0 16px;
+          padding-top: calc(env(safe-area-inset-top, 0px) + 10px);
           margin-bottom: 24px;
         }
 

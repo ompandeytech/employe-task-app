@@ -85,13 +85,22 @@ export default function ReassignedTasks() {
     }
     return namesArray.some((name) => normalize(name) === normalizedCurrentUserName);
   };
+const assignedToMe = tasks.filter((task) => {
+  const assignedName =
+    task.assignedTo ||
+    task.reassigned_to_name ||
+    task.reassignedToName;
 
-  const assignedToMe = tasks.filter(
-    (task) =>
-      assignedNamesIncludeCurrent(task.assignedTo) &&
-      task.reassignedBy &&
-      normalize(task.reassignedBy) !== normalizedCurrentUserName
+  const reassignedBy =
+    task.reassignedBy ||
+    task.reassigned_by_name;
+
+  return (
+    assignedNamesIncludeCurrent(assignedName) &&
+    reassignedBy &&
+    normalize(reassignedBy) !== normalizedCurrentUserName
   );
+});
 
   const filteredTasks =
     activeTab === "assignedByMe" ? assignedByMeTasks : assignedToMe;

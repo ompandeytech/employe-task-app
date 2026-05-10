@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTaskContext } from "../context/taskContextStore";
-import NotificationBell from "../components/NotificationBell";
 import axios from "axios";
 import { API_BASE, getAuthHeaders } from "../utils/apiConfig";
 import RefreshWrapper from "../components/RefreshWrapper";
@@ -31,7 +30,7 @@ const isPresentRecord = (record) => {
   return Boolean(record?.in_time || record?.out_time);
 };
 
-export default function Report({ setOpenMenu }) {
+export default function Report() {
   const navigate = useNavigate();
   const { tasks, refreshTasks } = useTaskContext();
   const userId = getUserId();
@@ -175,14 +174,6 @@ export default function Report({ setOpenMenu }) {
       <RefreshWrapper onRefresh={handleReportRefresh}>
         <div className="performance-dashboard report-container">
       {/* Header */}
-      <div className="report-header">
-        <button className="menu-btn" onClick={() => setOpenMenu(true)}>
-          <i className="fas fa-bars"></i>
-        </button>
-        <h1 className="page-title">Performance Report</h1>
-        <NotificationBell />
-      </div>
-
       {/* Header Section */}
       <div className="dashboard-header">
         <h1 className="main-title">My Performance Report</h1>
@@ -395,8 +386,8 @@ export default function Report({ setOpenMenu }) {
 
         .performance-dashboard {
           min-height: 100vh;
-          background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-          padding: 24px 20px 100px;
+          background: #f8fafc;
+          padding: 0 20px 100px;
           max-width: 480px;
           margin: 0 auto;
         }
@@ -410,7 +401,8 @@ export default function Report({ setOpenMenu }) {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 16px 0;
+          padding: 0 0 16px;
+          padding-top: calc(env(safe-area-inset-top, 0px) + 10px);
           margin-bottom: 24px;
           background: transparent;
         }

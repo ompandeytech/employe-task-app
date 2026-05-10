@@ -111,6 +111,8 @@ function BackButtonHandler({ enabled }) {
 
 function App() {
   const [openMenu, setOpenMenu] = useState(null);
+  const storedUser = localStorage.getItem("user");
+  const quickSessionToken = localStorage.getItem("quickSessionToken");
   useEffect(() => {
     let active = true;
 
@@ -148,7 +150,7 @@ function App() {
 
   // âœ… CLEAN INITIALIZATION â€” permission check hooks only when app loads
   const [loggedIn, setLoggedIn] = useState(
-    () => !!localStorage.getItem("user")
+    () => !!storedUser && !quickSessionToken
   );
 
   return (
@@ -161,7 +163,9 @@ function App() {
   <Route 
     path="/" 
     element={
-      sessionStorage.getItem("seenWelcome")
+      storedUser && quickSessionToken
+        ? <Navigate to="/login" replace />
+        : sessionStorage.getItem("seenWelcome")
         ? <Navigate to="/login" />
         : <Welcome />
     } 

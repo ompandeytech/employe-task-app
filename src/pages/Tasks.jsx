@@ -69,6 +69,8 @@ export default function Tasks() {
   const [reassignEmployee, setReassignEmployee] = useState(null);
   const [reassignReason, setReassignReason] = useState("");
   const [inProgressPercent, setInProgressPercent] = useState("");
+  const [rating, setRating] = useState(0);
+  const [feedback, setFeedback] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [employees, setEmployees] = useState([]);
   const [noteText, setNoteText] = useState("");
@@ -223,6 +225,8 @@ export default function Tasks() {
     setReassignEmployee(null);
     setReassignReason("");
     setInProgressPercent(action === "in-progress" ? String(task?.progress ?? "") : "");
+    setRating(0);
+    setFeedback("");
   };
 
   const handleSubmitNote = async () => {
@@ -268,9 +272,28 @@ export default function Tasks() {
 
     switch (modalType) {
       case "done":
-        additionalData = { completedAt: new Date().toISOString() };
-        await updateTaskStatus(selectedTask.id, "done", additionalData);
-        break;
+  additionalData = {
+    completedAt: new Date().toISOString(),
+  };
+
+  await axios.post(
+    `${API_BASE}/tasks/${selectedTask.id}/employee-feedback`,
+    {
+      rating,
+      feedback,
+    },
+    {
+      headers: getAuthHeaders(),
+    }
+  );
+
+  await updateTaskStatus(
+    selectedTask.id,
+    "done",
+    additionalData
+  );
+
+  break;
       case "in-progress":
         if (inProgressPercent === "") {
           alert("Please enter task progress percentage");
@@ -319,6 +342,7 @@ export default function Tasks() {
           reassignedBy: reassignedByName,
         };
         await updateTaskStatus(selectedTask.id, "reassigned", additionalData);
+        await refreshTasks();
         break;
       }
       default:
@@ -368,7 +392,46 @@ export default function Tasks() {
   const renderModalFields = () => {
     switch (modalType) {
       case "done":
-        return <p className="modal-message">This will record the task as completed in your history.</p>;
+  return (
+    <>
+      <div className="done-modal-header">
+        <div className="done-modal-badge">
+          <i className="fas fa-star"></i>
+        </div>
+
+        <div>
+          <h3 className="modal-title">Rating</h3>
+          <p className="done-modal-subtitle">
+            Share how this task went.
+          </p>
+        </div>
+      </div>
+
+      <div className="rating-stars">
+        {[1, 2, 3, 4, 5].map((star) => (
+          <button
+            key={star}
+            type="button"
+            className={`rating-star ${rating >= star ? "active" : ""}`}
+            onClick={() => setRating(star)}
+          >
+            <i className="fas fa-star"></i>
+          </button>
+        ))}
+      </div>
+
+      <div className="modal-input modal-input--feedback">
+        <label>Feedback</label>
+
+        <textarea
+          value={feedback}
+          onChange={(e) => setFeedback(e.target.value)}
+          placeholder="Type your feedback..."
+          rows={4}
+        />
+      </div>
+    </>
+  );
       case "in-progress":
         return (
           <label>
@@ -613,7 +676,8 @@ export default function Tasks() {
           display: flex;
           justify-content: space-between;
           align-items: flex-start;
-          padding: 20px 16px 10px;
+          padding: 0 16px 10px;
+          padding-top: calc(env(safe-area-inset-top, 0px) + 10px);
           gap: 16px;
         }
 

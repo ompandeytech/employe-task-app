@@ -1,3 +1,24 @@
+.attendance-page {
+  min-height: 100vh;
+  background: #f8fafc;
+  padding: 0 16px 100px;
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+.attendance-back-btn {
+  margin-top: calc(env(safe-area-inset-top, 0px) + 10px);
+  margin-bottom: 12px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  color: #0f172a;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 .punch-wrapper {
   margin: 1rem 0;
   padding: 1.25rem 0;

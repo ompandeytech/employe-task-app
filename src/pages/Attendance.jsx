@@ -757,32 +757,19 @@ export default function Attendance() {
   return (
     <RefreshWrapper onRefresh={refreshAttendanceData}>
       <div className="attendance-page">
-      <header className="att-header">
         <button
           type="button"
           onClick={handleBack}
-          style={{
-            border: "1px solid #e2e8f0",
-            background: "#fff",
-            color: "#0f172a",
-            borderRadius: 8,
-            padding: "6px 10px",
-            fontSize: 13,
-            fontWeight: 600,
-            marginBottom: 10,
-            cursor: "pointer",
-          }}
+          className="attendance-back-btn"
         >
           Back
         </button>
-        <h2>My Attendance</h2>
-      </header>
 
-      <div className="greeting">
-        <p>
-          {formatDate(new Date())} • {time.toLocaleTimeString()}
-        </p>
-      </div>
+        <div className="greeting">
+          <p>
+            {formatDate(new Date())} • {time.toLocaleTimeString()}
+          </p>
+        </div>
 
       <div className="punch-wrapper">
         <button
