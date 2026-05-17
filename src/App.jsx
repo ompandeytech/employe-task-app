@@ -11,6 +11,8 @@ import Profile from "./pages/Profile";
 import Attendance from "./pages/Attendance";
 import Salary from "./pages/Salary";
 import Sales from "./pages/Sales";
+import Accounts from "./pages/Accounts";
+import SalesHistory from "./history/SalesHistory";
 import Manufacture from "./pages/Manufacture";
 import Rto from "./pages/Rto";
 import Welcome from "./pages/Welcome";
@@ -23,6 +25,7 @@ import ReassignedTasks from "./pages/ReassignedTasks";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 import Sidebar from "./components/Sidebar";
+
 
 function BackButtonHandler({ enabled }) {
   const location = useLocation();
@@ -201,6 +204,7 @@ function App() {
                   </ProtectedRoute>
                 }
               />
+                
               <Route
                 path="/report"
                 element={
@@ -239,6 +243,22 @@ function App() {
                 element={
                   <ProtectedRoute page="sales">
                     <Sales setOpenMenu={setOpenMenu} />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/sales/history"
+                element={
+                  <ProtectedRoute page="sales">
+                    <SalesHistory />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/sales/accounts"
+                element={
+                  <ProtectedRoute page="sales">
+                    <Accounts />
                   </ProtectedRoute>
                 }
               />

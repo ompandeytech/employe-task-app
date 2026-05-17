@@ -1,0 +1,272 @@
+.accounts-page {
+  width: 100%;
+  min-height: 100vh;
+  padding: 0 24px 28px;
+  box-sizing: border-box;
+  background: #f6f8fc;
+  color: #0f172a;
+}
+
+.accounts-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.accounts-header h2 {
+  margin: 0 0 6px;
+  font-size: 24px;
+  font-weight: 800;
+  color: #07102a;
+}
+
+.accounts-header p,
+.accounts-table-head p {
+  margin: 0;
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.accounts-card {
+  background: #ffffff;
+  border: 1px solid #dbe6f4;
+  border-radius: 18px;
+  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+}
+
+.accounts-form-card {
+  padding: 22px 24px 24px;
+  margin-bottom: 22px;
+}
+
+.accounts-section-title {
+  padding-bottom: 16px;
+  border-bottom: 1px solid #dbe7f5;
+  margin-bottom: 18px;
+}
+
+.accounts-section-title h3,
+.accounts-table-head h3 {
+  margin: 0 0 6px;
+  font-size: 18px;
+  font-weight: 800;
+  color: #1e3a5f;
+}
+
+.accounts-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr)) auto;
+  gap: 14px 18px;
+  align-items: end;
+  background: linear-gradient(180deg, #f8fbff, #ffffff);
+  border: 1px solid #e6e9f2;
+  border-radius: 14px;
+  padding: 14px;
+}
+
+.accounts-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.accounts-field label {
+  font-size: 12px;
+  font-weight: 800;
+  color: #334155;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.accounts-field input,
+.accounts-field select {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 14px;
+  box-sizing: border-box;
+  border: 1px solid #e6e9f2;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #07102a;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.accounts-field input:focus,
+.accounts-field select:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.08);
+}
+
+.accounts-form-actions,
+.accounts-actions-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.accounts-save-btn,
+.accounts-cancel-btn,
+.accounts-edit-btn,
+.accounts-delete-btn,
+.accounts-back-btn {
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 18px;
+  white-space: nowrap;
+}
+
+.accounts-save-btn,
+.accounts-edit-btn,
+.accounts-back-btn {
+  background: #2563eb;
+  color: #ffffff;
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.2);
+}
+
+.accounts-save-btn:hover,
+.accounts-edit-btn:hover,
+.accounts-back-btn:hover {
+  background: #1d4ed8;
+}
+
+.accounts-save-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.accounts-cancel-btn {
+  background: #e2e8f0;
+  color: #475569;
+}
+
+.accounts-delete-btn {
+  background: #ff4d4f;
+  color: #ffffff;
+  box-shadow: 0 8px 18px rgba(255, 77, 79, 0.2);
+}
+
+.accounts-delete-btn:hover {
+  background: #ef4444;
+}
+
+.accounts-table-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 24px;
+  border-bottom: 1px solid #dbe7f5;
+}
+
+.accounts-table-container {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.accounts-table {
+  width: 100%;
+  min-width: 640px;
+  border-collapse: collapse;
+}
+
+.accounts-table thead th {
+  background: #edf3fb;
+  color: #506784;
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.accounts-table th,
+.accounts-table td {
+  padding: 16px 18px;
+  text-align: center;
+  border-bottom: 1px solid #e6edf7;
+  border-right: 1px solid #e6edf7;
+  vertical-align: middle;
+  font-size: 14px;
+}
+
+.accounts-table th:last-child,
+.accounts-table td:last-child {
+  border-right: none;
+}
+
+.accounts-table tbody tr:nth-child(even) {
+  background: #fbfdff;
+}
+
+.accounts-table-strong {
+  font-weight: 800;
+  color: #07102a;
+}
+
+.accounts-platform-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 90px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+
+.accounts-empty-state {
+  padding: 32px 20px;
+  text-align: center;
+  color: #64748b;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+@media (max-width: 900px) {
+  .accounts-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .accounts-form-actions,
+  .accounts-actions-cell {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .accounts-save-btn,
+  .accounts-cancel-btn,
+  .accounts-edit-btn,
+  .accounts-delete-btn,
+  .accounts-back-btn {
+    width: 100%;
+  }
+}
+
+@media (max-width: 768px) {
+  .accounts-page {
+    padding: 0 12px 20px;
+  }
+
+  .accounts-form-card,
+  .accounts-table-head {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}

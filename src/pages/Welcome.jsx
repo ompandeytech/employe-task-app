@@ -11,26 +11,57 @@ export default function Welcome() {
 
   return (
     <div className="welcome-page">
+      <div className="welcome-glow glow-left"></div>
+      <div className="welcome-glow glow-right"></div>
 
-      {/* Background dots */}
-      <div className="glow-dot dot-1"></div>
-      <div className="glow-dot dot-2"></div>
-      <div className="glow-dot dot-3"></div>
-      <div className="glow-dot dot-4"></div>
+      <div className="welcome-shell fade-in">
+        <div className="welcome-badge">Techiohisab Office</div>
 
-      <div className="center-box fade-in">
-        <div className="floating-icon"></div>
+        <h1 className="welcome-title">Your Smart Employee Workspace</h1>
 
-        <h1 className="app-title">Techio Task</h1>
-        <p className="app-subtitle">
-          Smart task management for teams.
-        </p>
+        <div className="welcome-illustration slide-up" aria-hidden="true">
+          <div className="illustration-panel">
+            <div className="illustration-header">
+              <span className="illustration-dot dot-blue"></span>
+              <span className="illustration-dot dot-cyan"></span>
+              <span className="illustration-dot dot-soft"></span>
+            </div>
 
-        <button className="btn-primary full-btn" onClick={goToLogin}>
-          Go to Login
+            <div className="illustration-screen">
+              <div className="screen-badge">Connected team</div>
+
+              <div className="screen-grid">
+                <div className="screen-card tall">
+                  <span>Tasks</span>
+                  <strong>Live</strong>
+                </div>
+                <div className="screen-card">
+                  <span>Attendance</span>
+                  <strong>Ready</strong>
+                </div>
+                <div className="screen-card accent">
+                  <span>Workflow</span>
+                  <strong>Secure</strong>
+                </div>
+              </div>
+
+              <div className="screen-wave">
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <button className="welcome-button" onClick={goToLogin}>
+          Get Started
         </button>
-      </div>
 
+        <div className="welcome-security-pill">Secure company environment</div>
+      </div>
     </div>
   );
 }

@@ -1,20 +1,60 @@
-import { useEffect, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { X } from "lucide-react";
+import "./SalesAwbScanModal.css";
 
-const normalizeAwbList = (awbs) => {
+const normalizeAwb = (value) => String(value || "").trim();
+
+const buildUniqueAwbs = (awbs) => {
   const seen = new Set();
-  return String(Array.isArray(awbs) ? awbs.join("\n") : awbs || "")
-    .split(/\r?\n|,/)
-    .map((value) => String(value || "").trim())
-    .filter((value) => {
-      if (!value || seen.has(value)) return false;
-      seen.add(value);
-      return true;
-    });
+  const next = [];
+
+  for (const awb of Array.isArray(awbs) ? awbs : []) {
+    const normalized = normalizeAwb(awb);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    next.push(normalized);
+  }
+
+  return next;
 };
+
+const createPreviewRow = (awb, type = "ordered") => ({
+  id: `${type}-${awb}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  awb,
+  type,
+});
 
 export default function SalesAwbScanModal({
   open,
+  productName = "",
+  packagingMaterial = "",
+  packagingCost = 0,
+  initialAwbs = [],
+  onClose,
+  onConfirm,
+}) {
+  const uniqueInitialAwbs = useMemo(() => buildUniqueAwbs(initialAwbs), [initialAwbs]);
+  const resetKey = useMemo(
+    () => [productName, packagingMaterial, packagingCost, ...uniqueInitialAwbs].join("||"),
+    [packagingCost, packagingMaterial, productName, uniqueInitialAwbs]
+  );
+
+  if (!open) return null;
+
+  return (
+    <SalesAwbScanModalContent
+      key={resetKey}
+      productName={productName}
+      packagingMaterial={packagingMaterial}
+      packagingCost={packagingCost}
+      initialAwbs={uniqueInitialAwbs}
+      onClose={onClose}
+      onConfirm={onConfirm}
+    />
+  );
+}
+
+function SalesAwbScanModalContent({
   productName,
   packagingMaterial,
   packagingCost,
@@ -22,165 +62,212 @@ export default function SalesAwbScanModal({
   onClose,
   onConfirm,
 }) {
-  const [draftValue, setDraftValue] = useState("");
+  const inputRef = useRef(null);
+  const awbSetRef = useRef(new Set(initialAwbs));
+  const audioContextRef = useRef(null);
+
+  const [inputValue, setInputValue] = useState("");
+  const [scannedAwbs, setScannedAwbs] = useState(() => initialAwbs);
+  const [previewRows, setPreviewRows] = useState(() =>
+    initialAwbs.map((awb) => createPreviewRow(awb, "ordered"))
+  );
+  const [errorMessage, setErrorMessage] = useState("");
+  const [totalScanCount, setTotalScanCount] = useState(() => initialAwbs.length);
+  const [duplicateScanCount, setDuplicateScanCount] = useState(0);
+
+  const formattedPackagingCost = useMemo(
+    () => Number(packagingCost || 0).toFixed(2),
+    [packagingCost]
+  );
 
   useEffect(() => {
-    if (!open) return;
-    setDraftValue((Array.isArray(initialAwbs) ? initialAwbs : []).join("\n"));
-  }, [open, initialAwbs]);
+    setTimeout(() => inputRef.current?.focus(), 0);
+  }, []);
 
-  const parsedAwbs = useMemo(() => normalizeAwbList(draftValue), [draftValue]);
+  const playBeep = (type = "success") => {
+    if (typeof window === "undefined") return;
 
-  if (!open) return null;
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
 
-  return createPortal(
-    <div
-      className="modal-overlay"
-      onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(15, 23, 42, 0.62)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "16px",
-        zIndex: 1200,
-      }}
-    >
-      <div
-        className="modal-content"
-        onClick={(event) => event.stopPropagation()}
-        style={{
-          width: "min(560px, 100%)",
-          background: "#fff",
-          borderRadius: "18px",
-          boxShadow: "0 24px 50px rgba(15, 23, 42, 0.22)",
-          overflow: "hidden",
-        }}
-      >
-        <div
-          style={{
-            padding: "18px 20px",
-            borderBottom: "1px solid #e2e8f0",
-            display: "flex",
-            justifyContent: "space-between",
-            gap: "12px",
-            alignItems: "flex-start",
-          }}
-        >
+    if (!audioContextRef.current) {
+      audioContextRef.current = new AudioContextClass();
+    }
+
+    const context = audioContextRef.current;
+    const now = context.currentTime;
+
+    const oscillator = context.createOscillator();
+    const gainNode = context.createGain();
+
+    oscillator.type = type === "duplicate" ? "square" : "sine";
+    oscillator.frequency.setValueAtTime(type === "duplicate" ? 220 : 880, now);
+
+    gainNode.gain.setValueAtTime(0.0001, now);
+    gainNode.gain.exponentialRampToValueAtTime(0.18, now + 0.01);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, now + (type === "duplicate" ? 0.2 : 0.12));
+
+    oscillator.connect(gainNode);
+    gainNode.connect(context.destination);
+
+    oscillator.start(now);
+    oscillator.stop(now + (type === "duplicate" ? 0.22 : 0.14));
+  };
+
+  const handleAddAwb = () => {
+    const normalized = normalizeAwb(inputValue);
+    if (!normalized) {
+      setErrorMessage("Scan a valid AWB number.");
+      return;
+    }
+
+    setTotalScanCount((prev) => prev + 1);
+
+    if (awbSetRef.current.has(normalized)) {
+      setDuplicateScanCount((prev) => prev + 1);
+      setPreviewRows((prev) => [createPreviewRow(normalized, "duplicate"), ...prev]);
+      setErrorMessage(`${normalized} is already scanned.`);
+      setInputValue("");
+      playBeep("duplicate");
+      return;
+    }
+
+    awbSetRef.current.add(normalized);
+    setScannedAwbs((prev) => [...prev, normalized]);
+    setPreviewRows((prev) => [createPreviewRow(normalized, "ordered"), ...prev]);
+    setInputValue("");
+    setErrorMessage("");
+    playBeep("success");
+  };
+
+  const successfulScanCount = scannedAwbs.length;
+
+  return (
+    <div className="sales-awb-modal-overlay">
+      <div className="sales-awb-modal-card compact">
+        <div className="sales-awb-modal-header">
           <div>
-            <h3 style={{ margin: 0, fontSize: "18px", fontWeight: 800, color: "#0f172a" }}>
-              Scan AWB
-            </h3>
-            <p style={{ margin: "6px 0 0", fontSize: "13px", color: "#475569" }}>
-              {productName || "Selected product"}
-            </p>
-            {(packagingMaterial || Number(packagingCost || 0) > 0) && (
-              <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#64748b" }}>
-                Packaging: {packagingMaterial || "-"} | Cost: Rs.
-                {Number(packagingCost || 0).toFixed(2)}
-              </p>
-            )}
+            <h3>Scan AWB Numbers</h3>
+            <p>{productName || "Selected product"}</p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              border: "none",
-              background: "#f1f5f9",
-              color: "#0f172a",
-              width: "36px",
-              height: "36px",
-              borderRadius: "10px",
-              cursor: "pointer",
-              fontSize: "18px",
-              fontWeight: 700,
-            }}
-          >
-            X
+          <button type="button" className="sales-awb-close-btn" onClick={onClose}>
+            <X size={18} />
           </button>
         </div>
 
-        <div style={{ padding: "20px" }}>
-          <label
-            htmlFor="sales-awb-input"
-            style={{
-              display: "block",
-              marginBottom: "8px",
-              fontSize: "13px",
-              fontWeight: 700,
-              color: "#334155",
+        <div className="sales-awb-modal-body compact">
+          <div className="sales-awb-product-strip">
+            <div>
+              <span className="sales-awb-product-label">Product</span>
+              <strong>{productName || "-"}</strong>
+            </div>
+            <div>
+              <span className="sales-awb-product-label">Packaging</span>
+              <strong>{packagingMaterial || "Not set"}</strong>
+            </div>
+            <div>
+              <span className="sales-awb-product-label">Cost / Unit</span>
+              <strong>Rs.{formattedPackagingCost}</strong>
+            </div>
+            <div>
+              <span className="sales-awb-product-label">Scanned Qty</span>
+              <strong>{scannedAwbs.length}</strong>
+            </div>
+          </div>
+
+          <div className="sales-awb-stats-strip">
+            <div className="sales-awb-stat-card">
+              <span className="sales-awb-product-label">Total Scan</span>
+              <strong>{totalScanCount}</strong>
+            </div>
+            <div className="sales-awb-stat-card success">
+              <span className="sales-awb-product-label">Successfully Scanned</span>
+              <strong>{successfulScanCount}</strong>
+            </div>
+            <div className="sales-awb-stat-card warning">
+              <span className="sales-awb-product-label">Duplicate Scan</span>
+              <strong>{duplicateScanCount}</strong>
+            </div>
+          </div>
+
+          <form
+            className="sales-awb-manual-form single-row"
+            onSubmit={(event) => {
+              event.preventDefault();
+              handleAddAwb();
             }}
           >
-            Enter or paste AWB numbers
-          </label>
-          <textarea
-            id="sales-awb-input"
-            value={draftValue}
-            onChange={(event) => setDraftValue(event.target.value)}
-            placeholder="One AWB per line"
-            rows={10}
-            style={{
-              width: "100%",
-              resize: "vertical",
-              borderRadius: "12px",
-              border: "1px solid #cbd5e1",
-              padding: "12px 14px",
-              fontSize: "14px",
-              boxSizing: "border-box",
-              outline: "none",
-            }}
-          />
-          <p style={{ margin: "10px 0 0", fontSize: "12px", color: "#64748b" }}>
-            {parsedAwbs.length} unique AWB{parsedAwbs.length === 1 ? "" : "s"} ready
-          </p>
+            <input
+              ref={inputRef}
+              type="text"
+              value={inputValue}
+              onChange={(event) => setInputValue(event.target.value)}
+              placeholder="Scan AWB here"
+              autoFocus
+            />
+            <button type="submit">Add</button>
+          </form>
+
+          <div className={`sales-awb-feedback ${errorMessage ? "error" : "info"}`}>
+            {errorMessage || "Duplicate AWBs are blocked automatically. You can keep scanning continuously."}
+          </div>
+
+          <div className="sales-awb-results-panel compact">
+            <div className="sales-awb-panel-title">
+              <span>Scanned AWB List</span>
+              <span className="sales-awb-scan-count">{scannedAwbs.length} scanned</span>
+            </div>
+
+            <div className="sales-awb-simple-list">
+              {previewRows.length === 0 ? (
+                <div className="sales-awb-empty-state">No AWB scanned yet.</div>
+              ) : (
+                previewRows.map((row) => (
+                  <div key={row.id} className="sales-awb-simple-item">
+                    <span>{row.awb}</span>
+                    <span
+                      className={`sales-awb-simple-status ${
+                        row.type === "duplicate" ? "duplicate" : ""
+                      }`}
+                    >
+                      {row.type === "duplicate" ? "DUPLICATE" : "ORDERED"}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
         </div>
 
-        <div
-          style={{
-            padding: "16px 20px 20px",
-            display: "flex",
-            gap: "12px",
-            justifyContent: "flex-end",
-            borderTop: "1px solid #e2e8f0",
-          }}
-        >
+        <div className="sales-awb-footer">
           <button
             type="button"
-            onClick={onClose}
-            style={{
-              minHeight: "44px",
-              padding: "10px 16px",
-              borderRadius: "10px",
-              border: "1px solid #cbd5e1",
-              background: "#fff",
-              color: "#0f172a",
-              fontWeight: 700,
-              cursor: "pointer",
+            className="sales-awb-footer-btn muted"
+            onClick={() => {
+              awbSetRef.current = new Set();
+              setScannedAwbs([]);
+              setPreviewRows([]);
+              setInputValue("");
+              setErrorMessage("");
+              setTotalScanCount(0);
+              setDuplicateScanCount(0);
+              inputRef.current?.focus();
             }}
           >
+            Clear List
+          </button>
+          <button type="button" className="sales-awb-footer-btn muted" onClick={onClose}>
             Cancel
           </button>
           <button
             type="button"
-            onClick={() => onConfirm(parsedAwbs)}
-            style={{
-              minHeight: "44px",
-              padding: "10px 18px",
-              borderRadius: "10px",
-              border: "none",
-              background: "#2563eb",
-              color: "#fff",
-              fontWeight: 700,
-              cursor: "pointer",
-            }}
+            className="sales-awb-footer-btn primary"
+            onClick={() => onConfirm?.(scannedAwbs)}
           >
-            Confirm AWB
+            Confirm
           </button>
         </div>
       </div>
-    </div>,
-    document.body
+    </div>
   );
 }

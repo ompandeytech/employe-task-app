@@ -13,6 +13,7 @@ const SALES_API = `${API_BASE}/sales`;
 const INVENTORY_API = `${API_BASE}/inventory`;
 const PACKAGING_API = `${API_BASE}/packaging`;
 const SALES_PACKAGING_CACHE_KEY = "sales-awb-packaging-cache";
+const SALES_PAGE_SIZE = 50;
 
 const DEFAULT_FORM = {
   platform: "DIRECT",
@@ -42,6 +43,9 @@ const MODE_OPTIONS = [
   { value: "PACK", label: "Pack" },
   { value: "CANCEL", label: "Cancel" },
 ];
+
+const normalizePlatformValue = (platform) =>
+  String(platform || "DIRECT").trim().toUpperCase() || "DIRECT";
 
 const STATUS_OPTIONS = [
   "Packed",
@@ -139,6 +143,9 @@ const getModeSubmitLabel = (mode, editId) => {
 const createDefaultItems = () => DEFAULT_ITEMS.map(() => createEmptyItem());
 
 const normalizeAwb = (value) => String(value || "").trim();
+const normalizeSaleType = (value) =>
+  String(value || "SINGLE").trim().toUpperCase() === "COMBO" ? "COMBO" : "SINGLE";
+const formatSaleType = (value) => (normalizeSaleType(value) === "COMBO" ? "Combo" : "Single");
 const getDateKey = (value) => String(value || "").slice(0, 10);
 const formatHistoryDate = (value) => {
   const dateKey = getDateKey(value);
@@ -520,6 +527,7 @@ export default function Sales() {
   const [items, setItems] = useState(() => createDefaultItems());
   const [barcode, setBarcode] = useState("");
   const [saleMode, setSaleMode] = useState("PACK");
+  const [packType, setPackType] = useState("SINGLE");
   const [showAwbScanModal, setShowAwbScanModal] = useState(false);
   const [activeAwbItemIndex, setActiveAwbItemIndex] = useState(null);
 
@@ -532,9 +540,10 @@ export default function Sales() {
   const [filterCustomer, setFilterCustomer] = useState("");
   const [filterAccount, setFilterAccount] = useState("");
   const [summaryFilter, setSummaryFilter] = useState("all");
+  const [salesPage, setSalesPage] = useState(1);
 
   const [showBulkUploadModal, setShowBulkUploadModal] = useState(false);
-  const [uploadFile, setUploadFile] = useState(null);
+  const [_uploadFile, setUploadFile] = useState(null);
   const [uploadData, setUploadData] = useState([]);
   const [uploadErrors, setUploadErrors] = useState([]);
   const [uploadLoading, setUploadLoading] = useState(false);
@@ -549,6 +558,7 @@ export default function Sales() {
     setBarcode("");
     setEditId(null);
     setActiveAwbItemIndex(null);
+    setPackType("SINGLE");
   };
 
   const fetchSales = async () => {
@@ -570,6 +580,7 @@ export default function Sales() {
           invoiceNumber: sale.invoice_no || sale.invoiceNumber || "",
           awbNumber: sale.awb_no || sale.awb_number || sale.awbNumber || "",
           customer_name: sale.customer_name || sale.customerName || "",
+          sale_type: normalizeSaleType(sale.sale_type || sale.saleType),
           status: normalizeStatus(sale.status || sale.tracking_status),
         }))
       );
@@ -637,13 +648,39 @@ export default function Sales() {
     [packagingOptions]
   );
 
+  const platformAccounts = useMemo(() => {
+    const selectedPlatform = normalizePlatformValue(form.platform);
+
+    return accounts.filter(
+      (account) => normalizePlatformValue(account.platform) === selectedPlatform
+    );
+  }, [accounts, form.platform]);
+
+  useEffect(() => {
+    if (!form.account_name) return;
+
+    const selectedAccountExists = platformAccounts.some(
+      (account) => account.account_name === form.account_name
+    );
+
+    if (!selectedAccountExists) {
+      setForm((prev) => ({ ...prev, account_name: "" }));
+    }
+  }, [form.account_name, platformAccounts]);
+
   const itemsSubTotal = items.reduce((sum, item) => {
-    const quantity = Number(item.quantity || 0);
+    const quantity =
+      packType === "COMBO" && String(item.inventory_id || "").trim()
+        ? 1
+        : Number(item.quantity || 0);
     const price = Number(item.selling_price || 0);
     return sum + quantity * price;
   }, 0);
   const packagingTotal = items.reduce((sum, item) => {
-    const quantity = Number(item.quantity || 0);
+    const quantity =
+      packType === "COMBO" && String(item.inventory_id || "").trim()
+        ? 1
+        : Number(item.quantity || 0);
     const packagingCost = Number(item.packaging_cost || 0);
     return sum + quantity * packagingCost;
   }, 0);
@@ -653,7 +690,18 @@ export default function Sales() {
   const totalAmount = Math.max(0, itemsTotal - discountAmount);
 
   const handlePackSubmit = async () => {
-    const cleanItems = flattenItemsForSave(syncPackagingAcrossProductRows(items))
+    const syncedItems = syncPackagingAcrossProductRows(items);
+    const sharedComboAwb = normalizeAwb(form.awb_no);
+    const rowsForSave =
+      packType === "COMBO"
+        ? syncedItems.map((item) => ({
+            ...item,
+            quantity: "1",
+            awbs: sharedComboAwb ? [sharedComboAwb] : [],
+          }))
+        : flattenItemsForSave(syncedItems);
+
+    const cleanItems = rowsForSave
       .map((item) => ({
         inventory_id: Number(item.inventory_id || 0),
         quantity: normalizeAwbList(item.awbs).length || Number(item.quantity || 0),
@@ -676,6 +724,16 @@ export default function Sales() {
       alert("Add at least 1 item");
       return;
     }
+    if (packType === "COMBO") {
+      if (!sharedComboAwb) {
+        alert("Combo ke liye shared AWB number required hai");
+        return;
+      }
+      if (cleanItems.length < 2) {
+        alert("Combo ke liye kam se kam 2 products add karein");
+        return;
+      }
+    }
     if (editId) {
       alert("Edit sale feature abhi enabled nahi hai");
       return;
@@ -686,7 +744,7 @@ export default function Sales() {
       form.awb_no.trim() || cleanItems.find((item) => item.awbs.length > 0)?.awbs?.[0] || "";
     const uniqueAwbs = new Set(cleanItems.flatMap((item) => item.awbs));
 
-    if (uniqueAwbs.size !== totalAwbs) {
+    if (packType !== "COMBO" && uniqueAwbs.size !== totalAwbs) {
       alert("Duplicate AWB found across selected products");
       return;
     }
@@ -707,23 +765,44 @@ export default function Sales() {
         }
       }
 
-      for (const item of cleanItems) {
+      if (packType === "COMBO") {
         lastResponse = await axios.post(SALES_API, {
           platform: form.platform,
           platform_order_id: form.platform_order_id || null,
           customer_name: form.account_name || form.customer_name || "Direct Sale",
           invoice_no: form.invoice_no || null,
-          awb_no: item.awbs?.[0] || primaryAwb,
+          awb_no: primaryAwb,
           sale_date: form.sale_date,
           payment_mode: form.payment_mode || "CASH",
           discount_amount: 0,
           tax_amount: 0,
           account_name: form.account_name || null,
-          items: [item],
-          products: [item],
+          items: cleanItems,
+          products: cleanItems,
           mode: "PACK",
+          pack_type: "COMBO",
           status: "Packed",
         });
+      } else {
+        for (const item of cleanItems) {
+          lastResponse = await axios.post(SALES_API, {
+            platform: form.platform,
+            platform_order_id: form.platform_order_id || null,
+            customer_name: form.account_name || form.customer_name || "Direct Sale",
+            invoice_no: form.invoice_no || null,
+            awb_no: item.awbs?.[0] || primaryAwb,
+            sale_date: form.sale_date,
+            payment_mode: form.payment_mode || "CASH",
+            discount_amount: 0,
+            tax_amount: 0,
+            account_name: form.account_name || null,
+            items: [item],
+            products: [item],
+            mode: "PACK",
+            pack_type: "SINGLE",
+            status: "Packed",
+          });
+        }
       }
 
       writeSalesPackagingCache(packagingByAwb);
@@ -732,13 +811,44 @@ export default function Sales() {
       alert(
         lastResponse?.data?.message ||
           (totalAwbs > 0
-            ? `${totalAwbs} AWB row-wise sales saved successfully`
+            ? packType === "COMBO"
+              ? `Combo sale saved with ${cleanItems.length} products on AWB ${primaryAwb}`
+              : `${totalAwbs} AWB row-wise sales saved successfully`
             : "Sale saved successfully")
       );
     } catch (error) {
       const errorMsg = error.response?.data?.message || error.message || "Unknown error";
       console.error("Error saving sale:", error);
       alert(`Failed to save sale: ${errorMsg}`);
+    }
+  };
+
+  const handleSaleTypeChange = (nextSaleType) => {
+    const normalizedType = normalizeSaleType(nextSaleType);
+    setPackType(normalizedType);
+    setForm((prev) => ({ ...prev, awb_no: "" }));
+  };
+
+  const handleComboAwbScan = async () => {
+    const awb = normalizeAwb(form.awb_no);
+    if (!awb) {
+      alert("Combo AWB scan / enter karein");
+      return;
+    }
+
+    try {
+      const response = await axios.post(`${SALES_API}/awb/lifecycle`, {
+        awb_no: awb,
+        mode: "PACK",
+        checkOnly: true,
+      });
+
+      setForm((prev) => ({ ...prev, awb_no: awb }));
+      alert(response.data?.message || "Combo AWB ready hai. Ab products add karein.");
+    } catch (error) {
+      const errorMsg =
+        error.response?.data?.message || error.message || "Combo AWB validate nahi ho paya";
+      alert(errorMsg);
     }
   };
 
@@ -873,6 +983,11 @@ export default function Sales() {
   };
 
   const handleOpenItemAwbModal = (index) => {
+    if (packType === "COMBO") {
+      alert("Combo mode me AWB top field me enter karein. Ye AWB sab products par apply hoga.");
+      return;
+    }
+
     const currentItem = items[index];
     if (!String(currentItem?.inventory_id || "").trim()) {
       alert("Select product first");
@@ -933,11 +1048,11 @@ export default function Sales() {
     );
   };
 
-  const handleTaxPercentChange = (index, nextTaxPercent) => {
+  const _handleTaxPercentChange = (index, nextTaxPercent) => {
     const targetInventoryId = String(items[index]?.inventory_id || "").trim();
 
     setItems((prev) =>
-      prev.map((item, itemIndex) => {
+      prev.map((item) => {
         if (
           String(item?.inventory_id || "").trim() !== targetInventoryId ||
           !targetInventoryId
@@ -952,7 +1067,8 @@ export default function Sales() {
       })
     );
   };
-  const handleAwbScanSubmit = async (awb) => {
+
+  const _handleAwbScanSubmit = async (awb) => {
     if (saleMode === "CANCEL" && !String(form.cancel_reason || "").trim()) {
       throw new Error("Select cancel reason first");
     }
@@ -1051,11 +1167,10 @@ export default function Sales() {
   const baseFilteredSales = useMemo(() => {
     return (sales || [])
       .map((sale) => {
-        const status = normalizeStatus(sale.status || sale.tracking_status);
+        const status = normalizeStatus(sale.status);
 
         return {
           ...sale,
-          status,
           _itemLabel: getSingleHistoryItemLabel(sale),
           _status: status,
         };
@@ -1120,8 +1235,7 @@ export default function Sales() {
   const summaryCards = useMemo(() => {
     const normalizedSales = baseFilteredSales.map((sale) => ({
       ...sale,
-      status: sale._status,
-      _status: sale._status,
+      _status: normalizeStatus(sale.status || sale.tracking_status),
     }));
 
     return [
@@ -1161,6 +1275,32 @@ export default function Sales() {
       });
   }, [baseFilteredSales, summaryFilter]);
 
+  useEffect(() => {
+    setSalesPage(1);
+  }, [
+    filterPlatform,
+    filterFromDate,
+    filterToDate,
+    filterStatus,
+    filterAWB,
+    filterProduct,
+    filterCustomer,
+    filterAccount,
+    summaryFilter,
+  ]);
+
+  const salesPageCount = Math.max(1, Math.ceil(filteredSales.length / SALES_PAGE_SIZE));
+  const paginatedSales = filteredSales.slice(
+    (salesPage - 1) * SALES_PAGE_SIZE,
+    salesPage * SALES_PAGE_SIZE
+  );
+
+  useEffect(() => {
+    if (salesPage > salesPageCount) {
+      setSalesPage(salesPageCount);
+    }
+  }, [salesPage, salesPageCount]);
+
   const downloadSampleExcel = () => {
     const csvContent = [
       "date,platform,customer_name,invoice_no,awb_number,payment_method,product_name,quantity,selling_price,discount,status",
@@ -1189,6 +1329,7 @@ export default function Sales() {
       alert("Please upload a valid Excel (.xlsx) or CSV file");
       return;
     }
+
 
     setUploadFile(file);
     setUploadLoading(true);
@@ -1343,19 +1484,51 @@ export default function Sales() {
 
   const modeDescription =
     saleMode === "PACK"
-      ? "Pack mode now supports product-wise AWB scanning with packaging cost auto calculation."
+      ? packType === "COMBO"
+        ? "Combo mode me ek AWB multiple products par apply hoga. Single mode purani product-wise scanning jaisa hi rahega."
+        : "Pack mode now supports product-wise AWB scanning with packaging cost auto calculation."
       : saleMode === "PICKUP"
       ? "Pickup mode updates a Packed AWB to Picked and records the dispatch date."
       : "Cancel mode updates the existing AWB to Cancel and stores the selected cancel reason.";
 
   return (
     <div className="page-container">
-      <button className="back-btn" onClick={() => navigate(-1)}>
-        ← Back
-      </button>
-
       <div className="purchase-top-bar">
+        <h2>Sales Management (Vyapar Style)</h2>
         <div className="sales-header-actions">
+          <button
+            type="button"
+            onClick={() => navigate("/", { replace: true })}
+            className="sales-top-btn sales-top-btn-history"
+          >
+            Back
+          </button>
+
+          <button
+            type="button"
+            onClick={() => navigate("/sales/history")}
+            className="sales-top-btn sales-top-btn-history"
+          >
+            Sales History
+          </button>
+
+          <button
+            type="button"
+            onClick={() => navigate("/sales/accounts")}
+            className="sales-top-btn sales-top-btn-history"
+          >
+            Add Account
+          </button>
+
+          
+
+          <button
+            type="button"
+            className="sales-top-btn sales-top-btn-upload"
+            onClick={() => setShowBulkUploadModal(true)}
+          >
+            Bulk Upload (Excel)
+          </button>
         </div>
       </div>
 
@@ -1432,7 +1605,7 @@ export default function Sales() {
                 onChange={(event) => setForm({ ...form, account_name: event.target.value })}
               >
                 <option value="">Select Account</option>
-                {accounts.map((account) => (
+                {platformAccounts.map((account) => (
                   <option key={account.id} value={account.account_name}>
                     {account.account_name}
                   </option>
@@ -1445,6 +1618,26 @@ export default function Sales() {
                 onChange={(event) => setForm({ ...form, sale_date: event.target.value })}
                 required
               />
+
+              {packType === "COMBO" && (
+                <div className="sales-combo-awb-scan">
+                  <input
+                    placeholder="Scan / Enter Shared AWB"
+                    value={form.awb_no}
+                    onChange={(event) => setForm({ ...form, awb_no: event.target.value })}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        handleComboAwbScan();
+                      }
+                    }}
+                    required
+                  />
+                  <button type="button" onClick={handleComboAwbScan}>
+                    Scan AWB
+                  </button>
+                </div>
+              )}
 
               <button
                 type="submit"
@@ -1487,7 +1680,7 @@ export default function Sales() {
                 onChange={(event) => setForm({ ...form, account_name: event.target.value })}
               >
                 <option value="">Select Account</option>
-                {accounts.map((account) => (
+                {platformAccounts.map((account) => (
                   <option key={account.id} value={account.account_name}>
                     {account.account_name}
                   </option>
@@ -1550,6 +1743,7 @@ export default function Sales() {
               <tr>
                 <th>Product</th>
                 <th>Available</th>
+                <th>Sale Type</th>
                 <th>Qty</th>
                 <th>Packaging Material</th>
                 <th>Packaging Cost</th>
@@ -1565,7 +1759,8 @@ export default function Sales() {
                 );
                 const available = selected ? Number(selected.stock || 0) : 0;
                 const scannedAwbs = normalizeAwbList(item.awbs);
-                const quantityValue = scannedAwbs.length || Number(item.quantity || 0);
+                const quantityValue =
+                  packType === "COMBO" ? 1 : scannedAwbs.length || Number(item.quantity || 0);
                 const rowTotal =
                   quantityValue * Number(item.selling_price || 0) +
                   quantityValue * Number(item.packaging_cost || 0);
@@ -1597,16 +1792,26 @@ export default function Sales() {
                     </td>
                     <td style={{ fontWeight: 800 }}>{available}</td>
                     <td>
+                      <select
+                        className="sales-row-sale-type-select"
+                        value={packType}
+                        onChange={(event) => handleSaleTypeChange(event.target.value)}
+                      >
+                        <option value="SINGLE">Single</option>
+                        <option value="COMBO">Combo</option>
+                      </select>
+                    </td>
+                    <td>
                       <input
                         type="number"
                         placeholder="Qty"
-                        value={scannedAwbs.length ? quantityValue : item.quantity}
+                        value={packType === "COMBO" ? 1 : scannedAwbs.length ? quantityValue : item.quantity}
                         onChange={(event) => {
                           const next = [...items];
                           next[index] = { ...next[index], quantity: event.target.value };
                           setItems(next);
                         }}
-                        readOnly={scannedAwbs.length > 0}
+                        readOnly={packType === "COMBO" || scannedAwbs.length > 0}
                         required={index === 0}
                       />
                     </td>
@@ -1646,12 +1851,15 @@ export default function Sales() {
                       <button
                         type="button"
                         className="scan-awb-btn"
+                        disabled={packType === "COMBO"}
                         onClick={() => handleOpenItemAwbModal(index)}
                       >
-                        Scan AWB
+                        {packType === "COMBO" ? "Shared AWB" : "Scan AWB"}
                       </button>
                       {scannedAwbs.length > 0 ? (
                         <div className="sales-table-subtext">{scannedAwbs.length} scanned</div>
+                      ) : packType === "COMBO" && form.awb_no ? (
+                        <div className="sales-table-subtext">{normalizeAwb(form.awb_no)}</div>
                       ) : null}
                     </td>
                     <td>
@@ -1773,6 +1981,7 @@ export default function Sales() {
                 <th>Platform</th>
                 <th>Account</th>
                 <th>AWB</th>
+                <th>Sale Type</th>
                 <th>Items</th>
                 <th>Packaging Material</th>
                 <th>Packaging Cost</th>
@@ -1781,10 +1990,7 @@ export default function Sales() {
               </tr>
             </thead>
             <tbody>
-              {filteredSales.map((sale) => {
-                const status = normalizeStatus(sale._status || sale.status || sale.tracking_status);
-
-                return (
+              {paginatedSales.map((sale) => (
                 <tr key={`${sale.id}-${sale.sales_awb_id || sale.awb_no || sale.awbNumber || "sale"}`}>
                   <td className="sales-history-date-cell">{formatHistoryDate(sale.sale_date)}</td>
                   <td>{sale.platform || "DIRECT"}</td>
@@ -1792,12 +1998,13 @@ export default function Sales() {
                   <td style={{ fontWeight: 800 }}>
                     {sale.awbNumber || sale.awb_no || sale.awb || "N/A"}
                   </td>
+                  <td>{formatSaleType(sale.sale_type || sale.saleType)}</td>
                   <td className="sales-history-items-cell">{sale._itemLabel || "-"}</td>
                   <td>{sale.packaging_material || "-"}</td>
                   <td>Rs.{Number(sale.packaging_cost || 0).toFixed(2)}</td>
-                  <td className="status-cell">
-                    <span className={`status-badge ${getStatusBadgeClass(status)}`}>
-                      {status}
+                  <td>
+                    <span className={`status-badge ${getStatusBadgeClass(sale._status)}`}>
+                      {normalizeStatus(sale._status)}
                     </span>
                   </td>
                   <td className="sales-history-actions-cell">
@@ -1809,7 +2016,7 @@ export default function Sales() {
                     </button>
                   </td>
                 </tr>
-              )})}
+              ))}
 
               {filteredSales.length === 0 && (
                 <tr>
@@ -1821,6 +2028,37 @@ export default function Sales() {
             </tbody>
           </table>
         </div>
+
+        {filteredSales.length > SALES_PAGE_SIZE && (
+          <div className="sales-pagination">
+            <button
+              type="button"
+              className="sales-pagination-btn"
+              disabled={salesPage === 1}
+              onClick={() => setSalesPage((page) => Math.max(1, page - 1))}
+            >
+              Prev
+            </button>
+            {Array.from({ length: salesPageCount }, (_, index) => index + 1).map((page) => (
+              <button
+                key={page}
+                type="button"
+                className={`sales-pagination-btn ${salesPage === page ? "active" : ""}`}
+                onClick={() => setSalesPage(page)}
+              >
+                {page}
+              </button>
+            ))}
+            <button
+              type="button"
+              className="sales-pagination-btn"
+              disabled={salesPage === salesPageCount}
+              onClick={() => setSalesPage((page) => Math.min(salesPageCount, page + 1))}
+            >
+              Next
+            </button>
+          </div>
+        )}
       </div>
 
       <SalesAwbScanModal

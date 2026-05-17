@@ -10,6 +10,15 @@ import "./Rto.css";
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://techiohisab.com/api";
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const RTO_AWB_STORAGE_KEY = "rto_awb_by_order_id_v1";
+const DEFAULT_TREND_POINTS = [
+  { label: "Mon", value: 65 },
+  { label: "Tue", value: 78 },
+  { label: "Wed", value: 90 },
+  { label: "Thu", value: 81 },
+  { label: "Fri", value: 56 },
+  { label: "Sat", value: 85 },
+  { label: "Sun", value: 40 },
+];
 const formatDisplayDate = (d) => {
   if (!d) return "-";
   const x = new Date(d);
@@ -261,6 +270,47 @@ export default function Rto() {
     });
   }, [rtoOrders, searchQuery, marketplace, courierPartner, awbByOrderId, activeType]);
 
+  const lossTrendPoints = useMemo(() => {
+    const sourcePoints = Array.isArray(trendData) && trendData.length > 0 ? trendData : DEFAULT_TREND_POINTS;
+    const normalizedPoints = sourcePoints
+      .map((item, index) => {
+        const rawLabel =
+          item?.label ??
+          item?.day ??
+          item?.name ??
+          item?.date ??
+          item?.month ??
+          DEFAULT_TREND_POINTS[index]?.label ??
+          `P${index + 1}`;
+        const rawValue = Number(
+          item?.value ??
+            item?.percentage ??
+            item?.loss_recovery ??
+            item?.recovery ??
+            item?.amount ??
+            item?.count ??
+            0
+        );
+
+        return {
+          label: String(rawLabel).slice(0, 3),
+          value: Number.isFinite(rawValue) ? Math.max(0, rawValue) : 0,
+        };
+      })
+      .filter((item) => item.label);
+
+    if (normalizedPoints.length === 0) {
+      return DEFAULT_TREND_POINTS.map((item) => ({ ...item, height: item.value }));
+    }
+
+    const maxValue = Math.max(...normalizedPoints.map((item) => item.value), 1);
+
+    return normalizedPoints.map((item) => ({
+      ...item,
+      height: Math.max(8, (item.value / maxValue) * 100),
+    }));
+  }, [trendData]);
+
   const handleOrderSelection = (orderId) => {
     const newSelection = new Set(selectedOrders);
     if (newSelection.has(orderId)) {
@@ -426,8 +476,18 @@ export default function Rto() {
 
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
+    const fileName = `RTO_Report_${new Date().toISOString().split('T')[0]}.xlsx`;
     XLSX.utils.book_append_sheet(wb, ws, "RTO Orders");
-    XLSX.writeFile(wb, `RTO_Report_${new Date().toISOString().split('T')[0]}.xlsx`);
+    try {
+      const workbookBuffer = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+      const workbookBlob = new Blob([workbookBuffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      saveAs(workbookBlob, fileName);
+    } catch (error) {
+      console.error("Blob export failed, falling back to XLSX.writeFile:", error);
+      XLSX.writeFile(wb, fileName);
+    }
   };
 
   const exportToPDF = () => {
@@ -713,7 +773,7 @@ export default function Rto() {
           </div>
 
           {/* Orders Table */}
-          <div className="orders-table-card">
+          <div className={`orders-table-card ${loading ? "loading" : ""}`}>
             <div className="table-header">
               <div className="rto-table-heading">
                 <h3>RTO/DTO Orders</h3>
@@ -847,7 +907,7 @@ export default function Rto() {
 
           {/* Analytics Section */}
           <div className="analytics-section">
-            <div className="analytics-card">
+            <div className={`analytics-card ${loading ? "loading" : ""}`}>
               <h4>Courier RTO %</h4>
               <div className="bar-chart">
                 {courierRtoData.map((item, index) => (
@@ -865,7 +925,7 @@ export default function Rto() {
               </div>
             </div>
 
-            <div className="analytics-card">
+            <div className={`analytics-card ${loading ? "loading" : ""}`}>
               <h4>High Fraud Zones</h4>
               <div className="fraud-zones-list">
                 {fraudZones.map((zone, index) => (
@@ -878,7 +938,7 @@ export default function Rto() {
               </div>
             </div>
 
-            <div className="analytics-card">
+            <div className={`analytics-card ${loading ? "loading" : ""}`}>
               <h4>Marketplace Split</h4>
               <div className="pie-chart">
                 {marketplaceData.map((item, index) => (
@@ -892,22 +952,23 @@ export default function Rto() {
               </div>
             </div>
 
-            <div className="analytics-card">
+            <div className={`analytics-card ${loading ? "loading" : ""}`}>
               <h4>Loss Recovery Trend</h4>
               <div className="trend-chart">
                 <div className="trend-bars">
-                  {[65, 78, 90, 81, 56, 85, 40].map((value, index) => (
-                    <div key={index} className="trend-bar" style={{ height: `${value}%` }}></div>
+                  {lossTrendPoints.map((item, index) => (
+                    <div
+                      key={`${item.label}-${index}`}
+                      className="trend-bar"
+                      style={{ height: `${item.height}%` }}
+                      title={`${item.label}: ${item.value}`}
+                    ></div>
                   ))}
                 </div>
                 <div className="trend-labels">
-                  <span>Mon</span>
-                  <span>Tue</span>
-                  <span>Wed</span>
-                  <span>Thu</span>
-                  <span>Fri</span>
-                  <span>Sat</span>
-                  <span>Sun</span>
+                  {lossTrendPoints.map((item, index) => (
+                    <span key={`${item.label}-label-${index}`}>{item.label}</span>
+                  ))}
                 </div>
               </div>
             </div>
