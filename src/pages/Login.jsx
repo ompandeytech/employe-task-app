@@ -1,6 +1,7 @@
-﻿import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
+import "./Login.css";
 
 const API_BASE = "https://techiohisab.com/api";
 
@@ -14,6 +15,10 @@ export default function Login({ onSuccess }) {
   );
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
+  const [showPassword, setShowPassword] = useState(false);
+  const pinInputRef = useRef(null);
+
   useEffect(() => {
     const storedQuickSession = localStorage.getItem("quickSessionToken");
 
@@ -22,6 +27,12 @@ export default function Login({ onSuccess }) {
       setLoginMode("pin");
     }
   }, []);
+
+  useEffect(() => {
+    if (loginMode === "pin") {
+      pinInputRef.current?.focus();
+    }
+  }, [loginMode]);
 
   const handleLogin = async () => {
     const normalizedEmail = email.trim().toLowerCase();
@@ -37,7 +48,8 @@ export default function Login({ onSuccess }) {
       console.log("API CALLING:", fullUrl);
       console.log("LOGIN API:", fullUrl);
       setLoading(true);
-      const res = await axios.post(fullUrl,
+      const res = await axios.post(
+        fullUrl,
         {
           email: normalizedEmail,
           password: normalizedPassword,
@@ -143,31 +155,94 @@ export default function Login({ onSuccess }) {
     }
   };
 
-  return (
-    <div className="login-wrapper">
-      <div className="login-card">
-        <div className="login-header">
-          <div className="logo-circle">
-            <i className="fa-solid fa-user-tie"></i>
-          </div>
+  const focusPinInput = () => {
+    pinInputRef.current?.focus();
+  };
 
-          <h2>Welcome Back</h2>
-          <p>Sign in to your employee dashboard</p>
+  const updatePinValue = (nextValue) => {
+    setPin(nextValue.replace(/\D/g, "").slice(0, 4));
+  };
+
+  const handlePinInputChange = (e) => {
+    updatePinValue(e.target.value);
+  };
+
+  const handlePinKeyDown = (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handlePinLogin();
+    }
+  };
+
+  const appendPinDigit = (digit) => {
+    if (loading || pin.length >= 4) return;
+    setPin((current) => `${current}${digit}`.slice(0, 4));
+    focusPinInput();
+  };
+
+  const removePinDigit = () => {
+    if (loading) return;
+    setPin((current) => current.slice(0, -1));
+    focusPinInput();
+  };
+
+  const pinDigits = Array.from({ length: 4 }, (_, index) => pin[index] || "");
+  const activePinIndex = pin.length >= 4 ? 3 : pin.length;
+
+  return (
+    <div className="login-page">
+      <div className="login-ambient login-ambient-left" aria-hidden="true"></div>
+      <div className="login-ambient login-ambient-right" aria-hidden="true"></div>
+
+      <div className="login-card">
+        <div className="login-brand-row" aria-label="Techiohisab Office">
+          <div className="login-brand-icon" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path
+                d="M12 2L5 5V10.5C5 15 8.1 19.1 12 20.5C15.9 19.1 19 15 19 10.5V5L12 2Z"
+                fill="url(#brandShieldGradient)"
+              />
+              <path
+                d="M10.1 12.7L8.5 11.1L7.4 12.2L10.1 14.9L16.7 8.3L15.6 7.2L10.1 12.7Z"
+                fill="white"
+              />
+              <defs>
+                <linearGradient
+                  id="brandShieldGradient"
+                  x1="5"
+                  y1="2"
+                  x2="19"
+                  y2="20.5"
+                  gradientUnits="userSpaceOnUse"
+                >
+                  <stop stopColor="#0058BC" />
+                  <stop offset="1" stopColor="#7B3FE4" />
+                </linearGradient>
+              </defs>
+            </svg>
+          </div>
+          <span className="login-brand-text">Techiohisab Office</span>
+        </div>
+
+        <div className="login-header">
+          <h1>Welcome Back</h1>
         </div>
 
         {quickSessionToken ? (
-          <div className="mode-switch">
+          <div className="login-mode-switch" role="tablist" aria-label="Login mode">
             <button
               type="button"
-              className={`mode-btn ${loginMode === "password" ? "active" : ""}`}
+              className={`login-mode-btn ${loginMode === "password" ? "active" : ""}`}
               onClick={() => setLoginMode("password")}
+              aria-pressed={loginMode === "password"}
             >
               Password
             </button>
             <button
               type="button"
-              className={`mode-btn ${loginMode === "pin" ? "active" : ""}`}
+              className={`login-mode-btn ${loginMode === "pin" ? "active" : ""}`}
               onClick={() => setLoginMode("pin")}
+              aria-pressed={loginMode === "pin"}
             >
               PIN
             </button>
@@ -175,44 +250,122 @@ export default function Login({ onSuccess }) {
         ) : null}
 
         {loginMode === "password" ? (
-          <>
-            <div className="input-group">
-              <label>Email</label>
-              <input
-                type="email"
-                autoCapitalize="none"
-                autoCorrect="off"
-                autoComplete="username"
-                spellCheck={false}
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
+          <div className="login-section">
+            <div className="login-field">
+              <label htmlFor="login-email">Email</label>
+              <div className="login-input-shell">
+                <i className="fa-regular fa-envelope login-input-icon" aria-hidden="true"></i>
+                <input
+                  id="login-email"
+                  className="login-input"
+                  type="email"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  autoComplete="username"
+                  spellCheck={false}
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </div>
             </div>
 
-            <div className="input-group">
-              <label>Password</label>
-              <input
-                type="password"
-                autoCapitalize="none"
-                autoCorrect="off"
-                autoComplete="current-password"
-                spellCheck={false}
-                placeholder="********"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
+            <div className="login-field">
+              <label htmlFor="login-password">Password</label>
+              <div className="login-input-shell">
+                <i className="fa-solid fa-lock login-input-icon" aria-hidden="true"></i>
+                <input
+                  id="login-password"
+                  className="login-input"
+                  type={showPassword ? "text" : "password"}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  autoComplete="current-password"
+                  spellCheck={false}
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+                <button
+                  type="button"
+                  className="login-visibility-btn"
+                  onClick={() => setShowPassword((current) => !current)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  <i
+                    className={`fa-regular ${showPassword ? "fa-eye-slash" : "fa-eye"}`}
+                    aria-hidden="true"
+                  ></i>
+                </button>
+              </div>
             </div>
 
-            <button className="primary-btn" onClick={handleLogin} disabled={loading}>
-              {loading ? "Signing in..." : "Login to Dashboard"}
+            <div className="login-meta-row">
+              <label className="login-checkbox">
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                />
+                <span>Remember me</span>
+              </label>
+
+              
+            </div>
+
+            <button className="login-primary-btn" onClick={handleLogin} disabled={loading}>
+              {loading ? "Signing in..." : "Login to workspace"}
             </button>
-          </>
+
+           
+
+          </div>
         ) : (
-          <>
-            <div className="input-group">
-              <label>PIN</label>
+          <div className="login-pin-panel">
+            <div className="login-pin-hero" aria-hidden="true">
+              <div className="login-pin-hero-icon">
+                <svg width="65" height="65" viewBox="0 0 24 24" fill="none">
+                  <path
+                    d="M12 2L4.75 5.1V10.75C4.75 15.55 7.85 19.63 12 21C16.15 19.63 19.25 15.55 19.25 10.75V5.1L12 2Z"
+                    fill="url(#pinShieldGradient)"
+                  />
+                  <path
+  d="M12 10.2C10.9 10.2 10 9.3 10 8.2V7.8C10 6.7 10.9 5.8 12 5.8C13.1 5.8 14 6.7 14 7.8V8.2C14 9.3 13.1 10.2 12 10.2ZM15.2 11.4H8.8C8.2 11.4 7.8 11.9 7.8 12.4V15.4C7.8 16 8.2 16.4 8.8 16.4H15.2C15.8 16.4 16.2 16 16.2 15.4V12.4C16.2 11.9 15.8 11.4 15.2 11.4Z"
+  fill="white"
+/>
+                  <defs>
+                    <linearGradient
+                      id="pinShieldGradient"
+                      x1="4.75"
+                      y1="2"
+                      x2="19.25"
+                      y2="21"
+                      gradientUnits="userSpaceOnUse"
+                    >
+                      <stop stopColor="#0058BC" />
+                      <stop offset="1" stopColor="#7B3FE4" />
+                    </linearGradient>
+                  </defs>
+                </svg>
+              </div>
+              <div className="login-pin-lock-badge">
+                <i className="fa-solid fa-lock"></i>
+              </div>
+            </div>
+
+            <div className="login-pin-header">
+              <h2>Security Verification</h2>
+              <p>Enter your Master PIN to continue</p>
+            </div>
+
+            <div className="login-pin-entry" onClick={focusPinInput}>
+              <label className="login-pin-sr-only" htmlFor="login-pin">
+                Master PIN
+              </label>
               <input
+                id="login-pin"
+                ref={pinInputRef}
+                className="login-pin-hidden-input"
                 type="password"
                 inputMode="numeric"
                 autoCapitalize="none"
@@ -220,164 +373,87 @@ export default function Login({ onSuccess }) {
                 autoComplete="one-time-code"
                 spellCheck={false}
                 maxLength={4}
-                placeholder="****"
                 value={pin}
-                onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
+                onChange={handlePinInputChange}
+                onKeyDown={handlePinKeyDown}
+                aria-label="Master PIN"
               />
+
+              <div className="login-pin-boxes" role="group" aria-label="PIN entry boxes">
+                {pinDigits.map((digit, index) => (
+                  <div
+                    key={index}
+                    className={`login-pin-box ${
+                      index === activePinIndex && !loading ? "active" : ""
+                    } ${digit ? "filled" : ""}`}
+                    aria-hidden="true"
+                  >
+                    <span className="login-pin-dot">{digit ? "•" : ""}</span>
+                  </div>
+                ))}
+              </div>
             </div>
 
-            <button className="primary-btn" onClick={handlePinLogin} disabled={loading}>
-              {loading ? "Verifying..." : "Verify PIN"}
+            <div className="login-pin-keypad" aria-label="PIN keypad">
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((digit) => (
+                <button
+                  key={digit}
+                  type="button"
+                  className="login-pin-key"
+                  onClick={() => appendPinDigit(String(digit))}
+                  disabled={loading}
+                >
+                  {digit}
+                </button>
+              ))}
+
+              <button
+                type="button"
+                className="login-pin-key login-pin-key-icon"
+                onClick={focusPinInput}
+                disabled={loading}
+                aria-label="Biometric verification not available"
+                title="Biometric verification is not enabled in the current flow."
+              >
+                <i className="fa-solid fa-fingerprint" aria-hidden="true"></i>
+              </button>
+
+              <button
+                type="button"
+                className="login-pin-key"
+                onClick={() => appendPinDigit("0")}
+                disabled={loading}
+              >
+                0
+              </button>
+
+              <button
+                type="button"
+                className="login-pin-key login-pin-key-icon"
+                onClick={removePinDigit}
+                disabled={loading || pin.length === 0}
+                aria-label="Delete last digit"
+              >
+                <i className="fa-solid fa-delete-left" aria-hidden="true"></i>
+              </button>
+            </div>
+
+            <button
+              className="login-primary-btn login-primary-btn-pin"
+              onClick={handlePinLogin}
+              disabled={loading}
+            >
+              {loading ? "Verifying..." : "Verify"}
             </button>
-          </>
+
+            <div className="login-security-pill">
+              <i className="fa-solid fa-shield-halved" aria-hidden="true"></i>
+              <span>Protected Company Access</span>
+            </div>
+          </div>
         )}
 
-        <p className="footer-text">Secure login - Powered by your system</p>
       </div>
-
-      <style>{`
-        body {
-          margin: 0;
-          font-family: 'Inter', Arial, sans-serif;
-          background: linear-gradient(135deg, #4f46e5, #3b82f6, #06b6d4);
-        }
-
-        .login-wrapper {
-          height: 100vh;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 20px;
-        }
-
-        .login-card {
-          width: 360px;
-          background: rgba(255,255,255,0.92);
-          backdrop-filter: blur(10px);
-          border-radius: 20px;
-          padding: 28px 26px;
-          box-shadow: 0 20px 40px rgba(0,0,0,0.15);
-          text-align: center;
-          animation: fadeIn 0.6s ease-in-out;
-        }
- .logo-circle i {
-  font-size: 32px;
-}
-
-        @keyframes fadeIn {
-          from { transform: translateY(15px); opacity: 0; }
-          to { transform: translateY(0); opacity: 1; }
-        }
-
-        .logo-circle {
-          width: 70px;
-          height: 70px;
-          background: linear-gradient(135deg, #4f46e5, #06b6d4);
-          color: white;
-          font-size: 30px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          border-radius: 50%;
-          margin: 0 auto 10px;
-          box-shadow: 0 8px 15px rgba(79,70,229,0.3);
-        }
-
-        .login-header h2 {
-          margin: 8px 0 4px;
-          color: #111827;
-        }
-
-        .login-header p {
-          color: #6b7280;
-          font-size: 14px;
-          margin-bottom: 18px;
-        }
-
-        .input-group {
-          text-align: left;
-          margin-bottom: 12px;
-        }
-
-        .input-group label {
-          font-size: 13px;
-          color: #374151;
-          margin-bottom: 4px;
-          display: block;
-        }
-
-        .input-group input {
-          width: 100%;
-          padding: 10px;
-          border-radius: 10px;
-          border: 1px solid #e5e7eb;
-          font-size: 14px;
-          outline: none;
-        }
-
-        .input-group input:focus {
-          border-color: #4f46e5;
-          box-shadow: 0 0 0 2px rgba(79,70,229,0.15);
-        }
-
-        .mode-switch {
-          display: flex;
-          gap: 8px;
-          margin-bottom: 14px;
-        }
-
-        .mode-btn {
-          flex: 1;
-          padding: 10px;
-          border-radius: 10px;
-          border: 1px solid #e5e7eb;
-          background: #f9fafb;
-          color: #374151;
-          font-size: 14px;
-          cursor: pointer;
-        }
-
-        .mode-btn.active {
-          background: linear-gradient(135deg, #4f46e5, #06b6d4);
-          color: white;
-          border-color: transparent;
-        }
-
-        .primary-btn {
-          width: 100%;
-          margin-top: 10px;
-          padding: 11px;
-          border: none;
-          border-radius: 12px;
-          background: linear-gradient(135deg, #4f46e5, #06b6d4);
-          color: white;
-          font-size: 15px;
-          cursor: pointer;
-          transition: 0.2s ease;
-        }
-
-        .primary-btn:hover {
-          transform: translateY(-1px);
-          box-shadow: 0 6px 14px rgba(79,70,229,0.25);
-        }
-
-        .primary-btn:disabled {
-          background: #9ca3af;
-        }
-
-        .footer-text {
-          font-size: 12px;
-          color: #9ca3af;
-          margin-top: 12px;
-        }
-
-        @media (max-width: 400px) {
-          .login-card {
-            width: 100%;
-          }
-        }
-      `}</style>
     </div>
   );
 }
-

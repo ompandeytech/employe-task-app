@@ -15,52 +15,63 @@ export default function Welcome() {
       <div className="welcome-glow glow-right"></div>
 
       <div className="welcome-shell fade-in">
-        <div className="welcome-badge">Techiohisab Office</div>
+        <div className="welcome-brand">
+  <div className="brand-icon">
+    <svg
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+    >
+      <path
+        d="M12 2L4 5V11C4 16 7.5 20.5 12 22C16.5 20.5 20 16 20 11V5L12 2Z"
+        fill="#00bc1f"
+      />
+      <path
+        d="M10.2 12.8L8.2 10.8L7 12L10.2 15.2L17 8.4L15.8 7.2L10.2 12.8Z"
+        fill="white"
+      />
+    </svg>
+  </div>
 
-        <h1 className="welcome-title">Your Smart Employee Workspace</h1>
+  <span>Techiohisab Office</span>
+</div>
 
-        <div className="welcome-illustration slide-up" aria-hidden="true">
-          <div className="illustration-panel">
-            <div className="illustration-header">
-              <span className="illustration-dot dot-blue"></span>
-              <span className="illustration-dot dot-cyan"></span>
-              <span className="illustration-dot dot-soft"></span>
-            </div>
+       <h1 className="welcome-title">
+  Your Smart <span>Employee</span>
+  <br />
+  Workspace
+</h1>
 
-            <div className="illustration-screen">
-              <div className="screen-badge">Connected team</div>
-
-              <div className="screen-grid">
-                <div className="screen-card tall">
-                  <span>Tasks</span>
-                  <strong>Live</strong>
-                </div>
-                <div className="screen-card">
-                  <span>Attendance</span>
-                  <strong>Ready</strong>
-                </div>
-                <div className="screen-card accent">
-                  <span>Workflow</span>
-                  <strong>Secure</strong>
-                </div>
-              </div>
-
-              <div className="screen-wave">
-                <span></span>
-                <span></span>
-                <span></span>
-                <span></span>
-                <span></span>
-              </div>
-            </div>
-          </div>
-        </div>
+       <div className="welcome-illustration slide-up">
+  <img
+    src="/welcome.png"
+    alt="Welcome"
+    className="welcome-image"
+  />
+</div>
 
         <button className="welcome-button" onClick={goToLogin}>
           Get Started
         </button>
 
-        <div className="welcome-security-pill">Secure company environment</div>
+        <div className="welcome-security-pill"><div className="brand-icon">
+    <svg
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+    >
+      <path
+        d="M12 2L4 5V11C4 16 7.5 20.5 12 22C16.5 20.5 20 16 20 11V5L12 2Z"
+        fill="#280493"
+      />
+      <path
+        d="M10.2 12.8L8.2 10.8L7 12L10.2 15.2L17 8.4L15.8 7.2L10.2 12.8Z"
+        fill="white"
+      />
+    </svg>
+  </div>Secure company environment</div>
       </div>
     </div>
   );

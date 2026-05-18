@@ -37,11 +37,12 @@
 }
 
 .glow-left {
-  top: 10%;
-  left: -8%;
-  width: 180px;
-  height: 180px;
-  background: radial-gradient(circle, rgba(59, 130, 246, 0.22), rgba(59, 130, 246, 0));
+      top: -10%;
+    left: -8%;
+    width: 480px;
+    height: 680px;
+    background: radial-gradient(circle, rgb(37 111 232 / 59%), rgba(59, 130, 246, 0));
+
 }
 
 .glow-right {
@@ -63,32 +64,37 @@
   text-align: center;
 }
 
-.welcome-badge {
-  display: inline-flex;
+.welcome-brand {
+  display: flex;
+  align-items: center;
+  gap: 0px;
+  margin-bottom: 22px;
+}
+
+.welcome-brand span {
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.brand-icon {
+  display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 18px;
-  padding: 10px 16px;
-  border-radius: 999px;
-  border: 1px solid rgba(59, 130, 246, 0.14);
-  background: rgba(255, 255, 255, 0.78);
-  box-shadow: 0 10px 30px rgba(37, 99, 235, 0.08);
-  color: #24508f;
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  backdrop-filter: blur(12px);
 }
 
 .welcome-title {
-  margin: 0 0 22px;
-  color: #10233a;
-  font-size: clamp(2.1rem, 7vw, 3.25rem);
-  line-height: 1.05;
-  font-weight: 800;
-  letter-spacing: -0.04em;
+  margin: 0 0 24px;
+  color: #111827;
+  font-size: clamp(2rem, 7vw, 3.1rem);
+  line-height: 1.15;
+  font-weight: 600;
+  letter-spacing: -0.03em;
 }
 
+.welcome-title span {
+  color: #0058BC;
+}
 .welcome-illustration {
   width: 100%;
   margin-bottom: 24px;
@@ -234,18 +240,18 @@
 }
 
 .welcome-button {
-  width: 100%;
-  min-height: 54px;
-  margin-bottom: 18px;
-  border: none;
-  border-radius: 16px;
-  background: linear-gradient(135deg, #2f80ff 0%, #1e63e9 100%);
-  color: #ffffff;
-  font-size: 15px;
-  font-weight: 800;
-  cursor: pointer;
-  box-shadow: 0 18px 38px rgba(47, 128, 255, 0.26);
-  transition: transform 0.24s ease, box-shadow 0.24s ease;
+    width: 80%;
+    min-height: 48px;
+    margin-bottom: 18px;
+    border: none;
+    border-radius: 50px;
+    background: linear-gradient(135deg, #013486 0%, #4a1ee9 100%);
+    color: #ffffff;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    box-shadow: 0 14px 30px rgba(47, 128, 255, 0.22);
+    transition: transform 0.24s ease, box-shadow 0.24s ease;
 }
 
 .welcome-button:hover {
@@ -259,7 +265,7 @@
   justify-content: center;
   padding: 10px 16px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.78);
+  background: rgba(255, 255, 255, 0.084);
   border: 1px solid rgba(200, 221, 244, 0.92);
   color: #5f738f;
   font-size: 12px;
@@ -370,4 +376,11 @@
   .screen-card strong {
     font-size: 16px;
   }
+}
+.welcome-image {
+  width: 100%;
+  max-width: 340px;
+  display: block;
+  margin: 0 auto;
+  object-fit: contain;
 }

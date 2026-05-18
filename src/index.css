@@ -151,24 +151,6 @@ body {
 .btn-pending { background: #ca8a04; }
 .btn-reassign { background: #2563eb; }
 
-/* ===== BOTTOM NAV (PHONE STYLE) ===== */
-.bottom-nav {
-  position: fixed;
-  bottom: 0;
-  width: 100%;
-  max-width: 430px;
-  background: white;
-  display: flex;
-  justify-content: space-around;
-  padding: 12px 0;
-  box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
-}
-
-.bottom-nav div {
-  text-align: center;
-  font-size: 12px;
-}
-
 /* ===== MODAL ===== */
 .modal-overlay {
   position: fixed;
@@ -184,39 +166,6 @@ body {
   width: 85%;
   border-radius: 16px;
   padding: 16px;
-}
-/* ===== NEW PREMIUM BOTTOM NAV ===== */
-.bottom-nav {
-  position: fixed;
-  bottom: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 95%;
-  max-width: 430px;
-  background: white;
-  display: flex;
-  justify-content: space-around;
-  padding: 12px 10px;
-  border-radius: 18px 18px 0 0;
-  box-shadow: 0 -2px 15px rgba(0,0,0,0.08);
-}
-
-.nav-item {
-  text-align: center;
-  font-size: 12px;
-  color: #64748b;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-}
-
-.nav-item i {
-  font-size: 18px;
-}
-
-.nav-item.active {
-  color: #4f46e5;
 }
 /* ===== NEW ATTRACTIVE SLIDE PANEL ===== */
 .slide-overlay {
@@ -1119,55 +1068,6 @@ background: linear-gradient(135deg, #ff9c23, #ffd182);
 /* ===== SECTION GAP ===== */
 .modal-section {
   margin-top: 8px;
-}
-/* ===== PREMIUM HOVER EFFECT FOR BOTTOM NAV ===== */
-
-.nav-item {
-  transition: all 0.25s ease;
-  position: relative;
-  padding: 6px 10px;
-  border-radius: 12px;
-}
-
-/* Smooth hover lift */
-.nav-item:hover {
-  transform: translateY(-4px);
-  color: #4f46e5;
-}
-
-/* Glow circle behind icon */
-.nav-item::before {
-  content: "";
-  position: absolute;
-  inset: -2px;
-  background: rgba(79, 70, 229, 0.12);
-  border-radius: 14px;
-  opacity: 0;
-  transition: all 0.25s ease;
-  z-index: -1;
-}
-
-/* Show glow on hover */
-.nav-item:hover::before {
-  opacity: 1;
-  transform: scale(1.05);
-}
-
-/* Icon pop animation */
-.nav-item:hover i {
-  transform: scale(1.15);
-  transition: all 0.2s ease;
-}
-
-/* Active tab highlight */
-.nav-item.active {
-  color: #4f46e5;
-  font-weight: 600;
-}
-
-.nav-item.active::before {
-  opacity: 1;
-  background: rgba(79, 70, 229, 0.18);
 }
 .report-filters {
   display: flex;

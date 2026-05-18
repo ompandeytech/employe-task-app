@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useNavigate } from "react-router-dom";
 import { useTaskContext } from "../context/taskContextStore";
 import axios from "axios";
 import { API_BASE, getAuthHeaders } from "../utils/apiConfig";
 import TaskCard from "../components/TaskCard";
 import RefreshWrapper from "../components/RefreshWrapper";
+import WorkspaceBottomNav from "../components/WorkspaceBottomNav";
 import Select from "react-select";
 import { fetchTaskNotes } from "../utils/taskNotes";
 
@@ -60,7 +60,6 @@ const formatNoteTime = (value) => {
 };
 
 export default function Tasks() {
-  const navigate = useNavigate();
   const { updateTaskStatus, getTodayTasks, refreshTasks } = useTaskContext();
   const [showModal, setShowModal] = useState(false);
   const [modalType, setModalType] = useState("");
@@ -632,24 +631,7 @@ export default function Tasks() {
           modalRoot
         )}
 
-      <div className="soft-bottom-nav">
-        <div className="nav-item" onClick={() => navigate("/")}>
-          <i className="fas fa-home"></i>
-          <span>Home</span>
-        </div>
-        <div className="nav-item active" onClick={() => navigate("/tasks")}>
-          <i className="fas fa-tasks"></i>
-          <span>Tasks</span>
-        </div>
-        <div className="nav-item" onClick={() => navigate("/report")}>
-          <i className="fas fa-chart-line"></i>
-          <span>Report</span>
-        </div>
-        <div className="nav-item" onClick={() => navigate("/profile")}>
-          <i className="fas fa-user"></i>
-          <span>Profile</span>
-        </div>
-      </div>
+      <WorkspaceBottomNav />
 
       <style>{`
         * {
@@ -914,47 +896,6 @@ export default function Tasks() {
 
         .btn:not(:disabled):hover {
           transform: translateY(-2px);
-        }
-
-        .soft-bottom-nav {
-          position: fixed;
-          bottom: 0;
-          left: 0;
-          right: 0;
-          background: rgba(255, 255, 255, 0.95);
-          backdrop-filter: blur(15px);
-          border-top: 1px solid rgba(15, 23, 42, 0.08);
-          display: flex;
-          align-items: center;
-          justify-content: space-around;
-          padding: 12px 0;
-          box-shadow: 0 -6px 25px rgba(15, 23, 42, 0.15);
-          z-index: 1000;
-        }
-
-        .nav-item {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 4px;
-          cursor: pointer;
-          padding: 4px 12px;
-          border-radius: 12px;
-          font-size: 12px;
-          color: #94a3b8;
-        }
-
-        .nav-item i {
-          font-size: 18px;
-        }
-
-        .nav-item.active {
-          color: #4f46e5;
-        }
-
-        .nav-item:hover {
-          background: rgba(79, 70, 229, 0.08);
-          color: #4f46e5;
         }
 
         @media (max-width: 600px) {

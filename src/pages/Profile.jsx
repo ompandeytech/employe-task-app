@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useNotificationContext } from "../context/NotificationContext";
 import RefreshWrapper from "../components/RefreshWrapper";
+import WorkspaceBottomNav from "../components/WorkspaceBottomNav";
 
 const sanitizeProfileData = (user) => {
   if (!user) return null;
@@ -426,24 +427,7 @@ export default function Profile() {
       </div>
       </RefreshWrapper>
 
-      <div className="bottom-nav">
-        <div className="nav-item" onClick={() => navigate("/")}>
-          <i className="fas fa-home"></i>
-          <span>Home</span>
-        </div>
-        <div className="nav-item" onClick={() => navigate("/tasks")}>
-          <i className="fas fa-tasks"></i>
-          <span>Tasks</span>
-        </div>
-        <div className="nav-item" onClick={() => navigate("/report")}>
-          <i className="fas fa-chart-line"></i>
-          <span>Report</span>
-        </div>
-        <div className="nav-item active" onClick={() => navigate("/profile")}>
-          <i className="fas fa-user"></i>
-          <span>Profile</span>
-        </div>
-      </div>
+      <WorkspaceBottomNav />
 
       <style>{`
         * {
@@ -938,66 +922,6 @@ export default function Profile() {
         .btn-save:hover {
           transform: translateY(-1px);
           box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
-        }
-
-        /* Bottom Navigation */
-        .bottom-nav {
-          position: fixed;
-          bottom: 0;
-          left: 50%;
-          transform: translateX(-50%);
-          width: 100%;
-          max-width: 480px;
-          background: rgba(255, 255, 255, 0.95);
-          backdrop-filter: blur(20px);
-          border-top: 1px solid rgba(0, 0, 0, 0.08);
-          display: flex;
-          justify-content: space-around;
-          padding: 12px 20px;
-          box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.08);
-          z-index: 9999;
-        }
-
-        .nav-item {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 4px;
-          padding: 8px 16px;
-          border-radius: 12px;
-          cursor: pointer;
-          transition: all 0.3s ease;
-        }
-
-        .nav-item:hover {
-          background: rgba(16, 185, 129, 0.1);
-          transform: translateY(-2px);
-        }
-
-        .nav-item.active {
-          background: rgba(16, 185, 129, 0.1);
-        }
-
-        .nav-item i {
-          font-size: 18px;
-          color: #94a3b8;
-          transition: color 0.3s ease;
-        }
-
-        .nav-item.active i {
-          color: #10b981;
-        }
-
-        .nav-item span {
-          font-size: 11px;
-          color: #94a3b8;
-          font-weight: 500;
-          transition: color 0.3s ease;
-        }
-
-        .nav-item.active span {
-          color: #10b981;
-          font-weight: 600;
         }
 
         /* Responsive Design */
