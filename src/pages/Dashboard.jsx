@@ -33,40 +33,6 @@ export default function Dashboard({ setOpenMenu }) {
     await refreshTasks();
   }, [refreshTasks]);
 
-  const statCards = [
-    {
-      key: "done",
-      tone: "blue",
-      title: "Completed",
-      value: stats.done,
-      meta: "Tasks closed",
-      icon: "fa-check-circle",
-    },
-    {
-      key: "pending",
-      tone: "gray",
-      title: "Pending",
-      value: stats.pending,
-      meta: "Awaiting action",
-      icon: "fa-clock",
-    },
-    {
-      key: "inProgress",
-      tone: "violet",
-      title: "In Progress",
-      value: stats.inProgress,
-      meta: "Currently moving",
-      icon: "fa-arrows-rotate",
-    },
-    {
-      key: "reassigned",
-      tone: "red",
-      title: "Reassigned",
-      value: stats.reassigned,
-      meta: "Moved to others",
-      icon: "fa-user-plus",
-    },
-  ];
 
   const quickActions = [
     {
@@ -143,28 +109,7 @@ export default function Dashboard({ setOpenMenu }) {
               </div>
             </section>
 
-            <section className="dashboard-section">
-              <div className="dashboard-section-head">
-                <h2 className="dashboard-section-title">Task analytics</h2>
-                <span className="dashboard-section-note">Daily snapshot</span>
-              </div>
-
-              <div className="dashboard-stat-grid">
-                {statCards.map((card) => (
-                  <article
-                    key={card.key}
-                    className={`dashboard-stat-card dashboard-stat-card--${card.tone}`}
-                  >
-                    <div className="dashboard-stat-icon">
-                      <i className={`fas ${card.icon}`} aria-hidden="true"></i>
-                    </div>
-                    <div className="dashboard-stat-value">{card.value}</div>
-                    <div className="dashboard-stat-title">{card.title}</div>
-                    <div className="dashboard-stat-meta">{card.meta}</div>
-                  </article>
-                ))}
-              </div>
-            </section>
+          
 
             <section className="dashboard-section">
               <div className="dashboard-section-head">

@@ -705,7 +705,7 @@ export default function Tasks() {
         }
 
         .tasks-list {
-          padding: 0 16px 50px;
+          padding: 0 1px 30px;
           display: flex;
           flex-direction: column;
           gap: 16px;
