@@ -172,8 +172,7 @@
 }
 
 .login-input-shell:focus-within {
-  border-color: #6aa4ff;
-  box-shadow: 0 0 0 4px rgba(0, 88, 188, 0.12);
+  box-shadow: none;
 }
 
 .login-input-icon {
@@ -191,6 +190,12 @@
   color: #0f172a;
   font-size: 0.95rem;
 }
+.login-input:focus {
+  outline: none !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
 
 .login-input::placeholder {
   color: #9aa9ba;

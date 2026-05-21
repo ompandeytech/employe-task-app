@@ -131,12 +131,7 @@ const handleImageChange = (e) => {
       <div className="profile-content">
         {/* Profile Card */}
         <div className="profile-card">
-          <div className="profile-topbar">
-  <div className="profile-topbar-left">
-    <i className="fas fa-id-card-alt"></i>
-    <span>My Profile</span>
-  </div>
-</div>
+
           <details className="profile-menu">
             <summary className="profile-menu-trigger" aria-label="Open profile actions">
               <i className="fas fa-ellipsis-v"></i>

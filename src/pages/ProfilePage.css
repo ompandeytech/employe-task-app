@@ -48,8 +48,9 @@
   content: "";
   position: absolute;
   top: 0;
-  left: 0;
-  right: 0;
+  left: -20px;
+  right: -20px;
+  width: calc(100% + 40px);
   height: 190px;
   background:
     linear-gradient(180deg, rgba(15, 23, 42, 0.08), rgba(15, 23, 42, 0.02)),

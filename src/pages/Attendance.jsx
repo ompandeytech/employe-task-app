@@ -1,6 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
+import {
+  ArrowLeft,
+  BriefcaseBusiness,
+  CalendarDays,
+  Camera,
+  Clock3,
+  Coffee,
+  LogIn,
+  LogOut,
+  MapPin,
+  RotateCcw,
+  ShieldCheck,
+} from "lucide-react";
 import axios from "axios";
 import { API_BASE, getAuthHeaders } from "../utils/apiConfig";
 import RefreshWrapper from "../components/RefreshWrapper";
@@ -106,6 +119,81 @@ const getOfficeLocationStatus = (coords, locationConfig) => {
   return distance <= radiusMeters ? "inside" : "outside";
 };
 
+const formatHeroDate = (value) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleDateString("en-IN", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+};
+
+const formatWorkingDuration = (startValue, endValue) => {
+  if (!startValue) return "--";
+  const start = new Date(startValue);
+  const end = endValue instanceof Date ? endValue : new Date(endValue);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return "--";
+  const diffMinutes = Math.floor((end.getTime() - start.getTime()) / 60000);
+  if (!Number.isFinite(diffMinutes) || diffMinutes < 0) return "--";
+  const hours = Math.floor(diffMinutes / 60);
+  const minutes = diffMinutes % 60;
+  return `${hours}h ${String(minutes).padStart(2, "0")}m`;
+};
+
+const normalizeAttendanceTone = (status) => {
+  const value = String(status || "").toLowerCase();
+  if (value.includes("present")) return "present";
+  if (value.includes("absent")) return "absent";
+  if (value.includes("half")) return "half";
+  return "off";
+};
+
+const buildMonthlyCalendar = (rows, referenceDate) => {
+  const year = referenceDate.getFullYear();
+  const month = referenceDate.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const leadingSlots = (firstDay.getDay() + 6) % 7;
+  const activityMap = new Map();
+
+  rows.forEach((item) => {
+    const iso = getRecordDateString(item?.date);
+    if (!iso) return;
+    const entryDate = new Date(iso);
+    if (Number.isNaN(entryDate.getTime())) return;
+    if (entryDate.getFullYear() !== year || entryDate.getMonth() !== month) return;
+    activityMap.set(iso, normalizeAttendanceTone(item?.status));
+  });
+
+  const cells = [];
+  for (let index = 0; index < leadingSlots; index += 1) {
+    cells.push(null);
+  }
+
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const iso = toDateString(new Date(year, month, day));
+    cells.push({
+      day,
+      iso,
+      tone: activityMap.get(iso) || "off",
+      isToday: iso === toDateString(referenceDate),
+    });
+  }
+
+  while (cells.length % 7 !== 0) {
+    cells.push(null);
+  }
+
+  const weeks = [];
+  for (let index = 0; index < cells.length; index += 7) {
+    weeks.push(cells.slice(index, index + 7));
+  }
+
+  return weeks;
+};
+
 export default function Attendance() {
   const navigate = useNavigate();
   const user = getUser();
@@ -140,6 +228,7 @@ export default function Attendance() {
   const canvasRef = useRef(null);
   const lunchTimerRef = useRef(null);
   const modalRoot = typeof document !== "undefined" ? document.body : null;
+
   const handleBack = () => {
     if (window.history.length > 1) {
       navigate(-1);
@@ -275,8 +364,7 @@ export default function Attendance() {
   }, [loadTodayAttendance, loadEmployeeHistory]);
 
   const todayIso = useMemo(() => toDateString(new Date()), [time]);
-  const isTodayAttendanceRecord =
-    getRecordDateString(todayAttendance?.date) === todayIso;
+  const isTodayAttendanceRecord = getRecordDateString(todayAttendance?.date) === todayIso;
   const lunchInRecorded = isTodayAttendanceRecord && Boolean(todayAttendance?.lunch_in);
   const lunchOutRecorded = isTodayAttendanceRecord && Boolean(todayAttendance?.lunch_out);
   const lunchCompleted = lunchInRecorded && lunchOutRecorded;
@@ -330,6 +418,57 @@ export default function Attendance() {
   const hasCheckedOut = Boolean(todayAttendance?.out_time);
   const checkInDisabled = hasCheckedIn;
   const checkOutDisabled = !hasCheckedIn || hasCheckedOut;
+  const todayStatusTone = todayAttendance ? normalizeAttendanceTone(todayAttendance?.status) : "off";
+  const heroStatusTone = todayStatusTone === "off" && hasCheckedIn ? "present" : todayStatusTone;
+  const heroStatusLabel = (() => {
+    if (preparingPunch || saving) return "Syncing";
+    if (todayStatusTone === "absent") return "On Leave";
+    if (hasCheckedOut) return "Checked Out";
+    if (hasCheckedIn) return "Checked In";
+    return "Ready";
+  })();
+  const workingHoursLabel = formatWorkingDuration(
+    todayAttendance?.in_time,
+    todayAttendance?.out_time || time
+  );
+  const lunchDurationMinutes = getLunchDurationMinutes({
+    lunch_in: lunchStartTime,
+    lunch_out: lunchEndTime,
+  });
+  const lunchDurationLabel = lunchCompleted
+    ? `${lunchDurationMinutes !== null ? lunchDurationMinutes : 0} min`
+    : lunchActive
+    ? formatLiveDuration(liveTimer)
+    : lunchInRecorded
+    ? "Pending"
+    : "Not started";
+  const currentMonthLabel = time.toLocaleDateString("en-IN", {
+    month: "long",
+    year: "numeric",
+  });
+  const activityWeeks = buildMonthlyCalendar(history, time);
+  const monthlyPresentCount = history.filter((item) => {
+    const iso = getRecordDateString(item?.date);
+    if (!iso) return false;
+    const date = new Date(iso);
+    return (
+      !Number.isNaN(date.getTime()) &&
+      date.getFullYear() === time.getFullYear() &&
+      date.getMonth() === time.getMonth() &&
+      normalizeAttendanceTone(item?.status) === "present"
+    );
+  }).length;
+  const monthlyAbsentCount = history.filter((item) => {
+    const iso = getRecordDateString(item?.date);
+    if (!iso) return false;
+    const date = new Date(iso);
+    return (
+      !Number.isNaN(date.getTime()) &&
+      date.getFullYear() === time.getFullYear() &&
+      date.getMonth() === time.getMonth() &&
+      normalizeAttendanceTone(item?.status) === "absent"
+    );
+  }).length;
 
   const saveAttendance = async (payload) => {
     console.log("Saving attendance with payload:", payload);
@@ -422,11 +561,11 @@ export default function Attendance() {
     stopCameraTracks();
 
     const permissionDeniedNames = ["NotAllowedError", "PermissionDeniedError"];
-    const handleCameraFailure = (error) => {
-      const permissionDenied = permissionDeniedNames.includes(error?.name);
+    const handleCameraFailure = (camError) => {
+      const permissionDenied = permissionDeniedNames.includes(camError?.name);
       const message = permissionDenied
-        ? error?.message || "Camera permission denied. Please allow camera access to continue."
-        : error?.message || "Unable to access the camera. Please try again.";
+        ? camError?.message || "Camera permission denied. Please allow camera access to continue."
+        : camError?.message || "Unable to access the camera. Please try again.";
       setCameraStream(null);
       setCameraError(message);
       console.log("Camera failed", message);
@@ -580,7 +719,9 @@ export default function Attendance() {
       if (updatedAttendance) {
         setTodayAttendance(updatedAttendance);
         console.log("Today attendance updated:", updatedAttendance);
-        const updatedDate = updatedAttendance.date ? String(updatedAttendance.date).slice(0, 10) : null;
+        const updatedDate = updatedAttendance.date
+          ? String(updatedAttendance.date).slice(0, 10)
+          : null;
         setHistory((prev) => {
           if (!updatedDate) {
             return [updatedAttendance, ...prev];
@@ -658,75 +799,74 @@ export default function Attendance() {
     }
   };
 
-    const handleCheckPunch = async (type) => {
-      console.log("Checkin clicked", type);
-      if (!userId) {
-        alert("User not logged in properly");
-        return;
+  const handleCheckPunch = async (type) => {
+    console.log("Checkin clicked", type);
+    if (!userId) {
+      alert("User not logged in properly");
+      return;
+    }
+    if (saving || preparingPunch) return;
+    setError("");
+    setStatusMessage("");
+    setCameraError("");
+    setLocationStatus(null);
+    setLocationForPunch(null);
+    setPendingPunchType("");
+    setPunchHint("");
+    setPreparingPunch(true);
+    let slowNetworkTimer;
+    try {
+      slowNetworkTimer = setTimeout(() => {
+        setPunchHint("Preparing camera and location. This may take a bit longer on slower networks.");
+      }, 5000);
+
+      const officeLocation =
+        attendanceLocation || (await loadAttendanceLocation({ throwOnError: true }));
+      if (!officeLocation) {
+        throw new Error(
+          "Office location configuration is not available. Please contact your administrator."
+        );
       }
-      if (saving || preparingPunch) return;
-      setError("");
-      setStatusMessage("");
-      setCameraError("");
-      setLocationStatus(null);
-      setLocationForPunch(null);
-      setPendingPunchType("");
+
+      console.log("Location fetch start");
+      const coords = await getLocation();
+      const status = getOfficeLocationStatus(coords, officeLocation);
+      if (!status) {
+        throw new Error(
+          "Unable to verify office radius. Please try again once your location is stable."
+        );
+      }
+
+      setLocationForPunch(coords);
+      setLocationStatus(status);
+      if (status === "outside") {
+        setError("You are outside office location.");
+      }
+      setPendingPunchType(type);
+      setModalOpen(true);
+
+      setTimeout(async () => {
+        const stream = await startCameraStream("user");
+        if (stream) {
+          setCameraFacingMode("user");
+        }
+      }, 300);
+    } catch (err) {
+      console.error("Failed to prepare punch:", err);
+      const message =
+        err?.message ||
+        "Unable to prepare camera or location. Please check your network and permissions.";
+      setCameraError(message);
+      setError(message);
+      cleanupCamera();
+    } finally {
+      if (slowNetworkTimer) {
+        clearTimeout(slowNetworkTimer);
+      }
       setPunchHint("");
-      setPreparingPunch(true);
-      let slowNetworkTimer;
-      try {
-        slowNetworkTimer = setTimeout(() => {
-          setPunchHint("Preparing camera and location. This may take a bit longer on slower networks.");
-        }, 5000);
-
-        const officeLocation =
-          attendanceLocation || (await loadAttendanceLocation({ throwOnError: true }));
-        if (!officeLocation) {
-          throw new Error(
-            "Office location configuration is not available. Please contact your administrator."
-          );
-        }
-
-        console.log("Location fetch start");
-        const coords = await getLocation();
-        const status = getOfficeLocationStatus(coords, officeLocation);
-        if (!status) {
-          throw new Error(
-            "Unable to verify office radius. Please try again once your location is stable."
-          );
-        }
-
-        setLocationForPunch(coords);
-        setLocationStatus(status);
-        if (status === "outside") {
-          setError("You are outside office location.");
-        }
-        setPendingPunchType(type);
-        setModalOpen(true);
-
-        setTimeout(async () => {
-          const stream = await startCameraStream("user");
-          if (stream) {
-            setCameraFacingMode("user");
-          }
-        }, 300);
-
-      } catch (err) {
-        console.error("Failed to prepare punch:", err);
-        const message =
-          err?.message ||
-          "Unable to prepare camera or location. Please check your network and permissions.";
-        setCameraError(message);
-        setError(message);
-        cleanupCamera();
-      } finally {
-        if (slowNetworkTimer) {
-          clearTimeout(slowNetworkTimer);
-        }
-        setPunchHint("");
-        setPreparingPunch(false);
-      }
-    };
+      setPreparingPunch(false);
+    }
+  };
 
   useEffect(() => () => cleanupCamera(), []);
 
@@ -748,8 +888,8 @@ export default function Attendance() {
       });
       setLeaveReason("");
       console.log("Leave request submitted successfully");
-    } catch (error) {
-      console.error("Leave submission failed:", error);
+    } catch (submitError) {
+      console.error("Leave submission failed:", submitError);
       setError("Failed to submit leave request. Please try again.");
     }
   };
@@ -757,198 +897,457 @@ export default function Attendance() {
   return (
     <RefreshWrapper onRefresh={refreshAttendanceData}>
       <div className="attendance-page">
-        <button
-          type="button"
-          onClick={handleBack}
-          className="attendance-back-btn"
-        >
-          Back
-        </button>
-
-        <div className="greeting">
-          <p>
-            {formatDate(new Date())} • {time.toLocaleTimeString()}
-          </p>
-        </div>
-
-      <div className="punch-wrapper">
-        <button
-          className="punch-btn"
-          onClick={() => {
-            console.log("Button clicked:", "checkin");
-            handleCheckPunch("checkin");
-          }}
-          disabled={checkInDisabled}
-        >
-          Check In
-        </button>
-        <button
-          className="punch-btn checkout"
-          onClick={() => {
-            console.log("Button clicked:", "checkout");
-            handleCheckPunch("checkout");
-          }}
-          disabled={checkOutDisabled}
-        >
-          Check Out
-        </button>
-      </div>
-      <div className="punch-feedback">
-        {statusMessage && <p className="status success">{statusMessage}</p>}
-        {error && <p className="status error">{error}</p>}
-        {loading && !statusMessage && !error && (
-          <p className="status info" aria-live="polite">
-            Loading attendance data...
-          </p>
-        )}
-        {punchHint && !statusMessage && !error && !loading && (
-          <p className="status info">{punchHint}</p>
-        )}
-        <p className="location-readout">
-          {locationForPunch
-            ? `Current GPS: ${locationForPunch.lat.toFixed(6)}, ${locationForPunch.lng.toFixed(6)}`
-            : "Current latitude and longitude will appear once you initiate a punch."}
-        </p>
-      </div>
-
-      <div className="report-box lunch-tracker">
-        <h3>Track Lunch</h3>
-        <div className="lunch-action">
+        <div className="attendance-shell">
           <button
             type="button"
-            className={`lunch-toggle-btn ${showLunchOut ? "lunch-out" : "lunch-in"}`}
-            onClick={handleLunchToggle}
-            disabled={lunchSaving || saving || preparingPunch || lunchCompleted}
+            onClick={handleBack}
+            className="attendance-back-btn"
           >
-            {lunchCompleted ? "Lunch Completed" : showLunchOut ? "Lunch Out" : "Lunch In"}
+            <ArrowLeft size={18} />
+            <span>Back</span>
           </button>
-        </div>
-        {lunchActive && lunchStartTime && (
-          <>
-            <p className="lunch-status">Lunch started at {formatTime(lunchStartTime)}...</p>
-            <p className="lunch-status timer">Running timer: {formatLiveDuration(liveTimer)}</p>
-          </>
-        )}
-        {!lunchActive && lunchStartTime && lunchEndTime && (
-          <p className="lunch-status secondary">
-            Last session {formatTime(lunchStartTime)} - finished at {formatTime(lunchEndTime)}.
-          </p>
-        )}
-      </div>
 
-      <div className="history-section">
-        <h3>Attendance History</h3>
-        {history.length === 0 ? <p>No attendance records.</p> : null}
-        {history.map((item) => {
-          const durationMinutes = getLunchDurationMinutes(item);
-          return (
-            <div className="history-card" key={item.id}>
-              <div className="history-top">
-                <strong>{formatDate(item.date)}</strong>
-                <span className={`badge ${String(item.status).toLowerCase()}`}>{item.status}</span>
+          <section className="attendance-hero">
+            <div className="hero-topbar">
+              <div>
+                <p className="hero-kicker">Attendance Dashboard</p>
+                <h1>{userName}</h1>
+              </div>
+              <span className={`hero-status-badge ${heroStatusTone}`}>{heroStatusLabel}</span>
+            </div>
+
+            <div className="hero-time-block">
+              <div>
+                <p className="hero-date">{formatHeroDate(time)}</p>
+                <p className="hero-caption">Live status synced with your current attendance state</p>
+              </div>
+              <div className="hero-live-time">
+                <Clock3 size={18} />
+                <span>{time.toLocaleTimeString("en-IN")}</span>
+              </div>
+            </div>
+
+            <div className="hero-metrics">
+              <div className="hero-metric-card hero-metric-highlight">
+                <div className="hero-metric-icon">
+                  <BriefcaseBusiness size={18} />
+                </div>
+                <div>
+                  <p>Working Hours</p>
+                  <strong>{workingHoursLabel}</strong>
+                  <span>
+                    {hasCheckedIn
+                      ? hasCheckedOut
+                        ? "Shift completed today"
+                        : "Running since check in"
+                      : "Start your day to track time"}
+                  </span>
+                </div>
               </div>
 
-              <p>
-                <b>Name:</b> {item.employee_name || userName}
-              </p>
+           
+            </div>
+          </section>
 
-              {String(item.status).toLowerCase() === "present" ? (
+          <section className="dashboard-card">
+            <div className="section-heading">
+              <div>
+                <p className="section-kicker">Punch Actions</p>
+                <h3>Secure attendance punch</h3>
+              </div>
+            </div>
+
+            <div className="punch-wrapper">
+              <button
+                type="button"
+                className="punch-btn"
+                onClick={() => {
+                  console.log("Button clicked:", "checkin");
+                  handleCheckPunch("checkin");
+                }}
+                disabled={checkInDisabled}
+              >
+                <span className="punch-btn-icon">
+                  <LogIn size={20} />
+                </span>
+                <span className="punch-btn-copy">
+                  <span className="punch-btn-title">Check In</span>
+                  <span className="punch-btn-subtitle">
+                    {checkInDisabled ? "Already marked for today" : ""}
+                  </span>
+                </span>
+              </button>
+
+              <button
+                type="button"
+                className="punch-btn checkout"
+                onClick={() => {
+                  console.log("Button clicked:", "checkout");
+                  handleCheckPunch("checkout");
+                }}
+                disabled={checkOutDisabled}
+              >
+                <span className="punch-btn-icon">
+                  <LogOut size={20} />
+                </span>
+                <span className="punch-btn-copy">
+                  <span className="punch-btn-title">Check Out</span>
+                  <span className="punch-btn-subtitle">
+                    {checkOutDisabled ? "" : "Finish your workday"}
+                  </span>
+                </span>
+              </button>
+            </div>
+
+            <div className="punch-feedback">
+              {statusMessage && <p className="status success">{statusMessage}</p>}
+              {error && <p className="status error">{error}</p>}
+              {loading && !statusMessage && !error && (
+                <p className="status info" aria-live="polite">
+                  Loading attendance data...
+                </p>
+              )}
+              {punchHint && !statusMessage && !error && !loading && (
+                <p className="status info">{punchHint}</p>
+              )}
+
+              <div className="location-readout">
+                <MapPin size={16} />
+                <span>
+                  {locationForPunch
+                    ? `Current GPS: ${locationForPunch.lat.toFixed(6)}, ${locationForPunch.lng.toFixed(6)}`
+                    : "Current latitude and longitude will appear once you initiate a punch."}
+                </span>
+              </div>
+            </div>
+          </section>
+
+          <div className="dashboard-grid">
+            <div className="dashboard-card report-box lunch-tracker">
+              <div className="section-heading">
+                <div>
+                  <p className="section-kicker">Lunch Tracker</p>
+                  <h3>Manage your break</h3>
+                </div>
+                <div className="section-icon-badge lunch">
+                  <Coffee size={18} />
+                </div>
+              </div>
+
+              <div className="lunch-panel">
+                <div className="lunch-summary">
+                  <span
+                    className={`lunch-state-pill ${
+                      lunchCompleted ? "done" : lunchActive ? "live" : "idle"
+                    }`}
+                  >
+                    {lunchCompleted
+                      ? "Completed"
+                      : lunchActive
+                      ? "Running"
+                      : showLunchOut
+                      ? "Awaiting Lunch Out"
+                      : "Ready"}
+                  </span>
+                  <strong>{lunchDurationLabel}</strong>
+                  <p>
+                    {lunchActive && lunchStartTime
+                      ? `Lunch started at ${formatTime(lunchStartTime)}.`
+                      : !lunchActive && lunchStartTime && lunchEndTime
+                      ? `Last session ${formatTime(lunchStartTime)} to ${formatTime(lunchEndTime)}.`
+                      : "Start and end lunch from here without affecting the attendance flow."}
+                  </p>
+                </div>
+
+                <div className="lunch-action">
+                  <button
+                    type="button"
+                    className={`lunch-toggle-btn ${showLunchOut ? "lunch-out" : "lunch-in"}`}
+                    onClick={handleLunchToggle}
+                    disabled={lunchSaving || saving || preparingPunch || lunchCompleted}
+                  >
+                    <span className="lunch-btn-icon">
+                      <Coffee size={18} />
+                    </span>
+                    <span>
+                      {lunchCompleted
+                        ? "Lunch Completed"
+                        : showLunchOut
+                        ? "Lunch Out"
+                        : "Lunch In"}
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              {lunchActive && lunchStartTime && (
                 <>
-                  <p>
-                    <b>Check In:</b> {formatTime(item.in_time)}
-                  </p>
-                  <p>
-                    <b>Check Out:</b> {formatTime(item.out_time)}
-                  </p>
-                  <p>
-                    <b>Lunch In:</b> {formatTime(item.lunch_in)}
-                  </p>
-                  <p>
-                    <b>Lunch Out:</b> {formatTime(item.lunch_out)}
-                  </p>
-                  <p>
-                    <b>Lunch Duration:</b>{" "}
-                    {durationMinutes !== null ? `${durationMinutes} min` : "-"}
-                  </p>
-                  <p>
-                    <b>Remarks:</b> {item.remarks || "-"}
-                  </p>
+                  <p className="lunch-status">Lunch started at {formatTime(lunchStartTime)}.</p>
+                  <p className="lunch-status timer">Running timer: {formatLiveDuration(liveTimer)}</p>
                 </>
-              ) : (
-                <p>
-                  <b>Leave Reason:</b> {item.remarks || "-"}
+              )}
+              {!lunchActive && lunchStartTime && lunchEndTime && (
+                <p className="lunch-status secondary">
+                  Last session {formatTime(lunchStartTime)} - finished at {formatTime(lunchEndTime)}.
                 </p>
               )}
             </div>
-          );
-        })}
-      </div>
 
-      <div className="report-box">
-        <h3>Apply Leave</h3>
-        <textarea
-          placeholder="Enter leave reason..."
-          value={leaveReason}
-          onChange={(e) => setLeaveReason(e.target.value)}
-        />
-        <button className="leave-btn" onClick={submitLeave} disabled={saving || !leaveReason.trim()}>
-          {saving ? "Saving..." : "Submit Leave"}
-        </button>
-      </div>
-      {modalOpen && modalRoot &&
-        createPortal(
-          <div className="camera-modal">
-            <div className="camera-dialog">
-              <h3>Capture Attendance Photo</h3>
-              {cameraError && <p className="camera-error">{cameraError}</p>}
-              <video
-                ref={videoRef}
-                autoPlay
-                muted
-                playsInline
-                className={`camera-video ${
-                  locationStatus === "inside"
-                    ? "inside"
-                    : locationStatus === "outside"
-                    ? "outside"
-                    : ""
-                }`}
-              />
-              <canvas ref={canvasRef} style={{ display: "none" }} />
-              <p className="camera-hint">
-                Location:{" "}
-                {locationForPunch
-                  ? `${locationForPunch.lat.toFixed(6)}, ${locationForPunch.lng.toFixed(6)}`
-                  : "Waiting for GPS..."}
-              </p>
-              {locationStatus === "outside" && (
-                <p className="camera-warning">You are outside office location</p>
-              )}
-              <div className="camera-actions">
-                <button
-                  className="punch-btn"
-                  onClick={capturePhotoAndSubmit}
-                  disabled={saving || cameraLoading || locationStatus !== "inside"}
-                >
-                  Capture & Submit
-                </button>
-                <button className="punch-btn secondary" onClick={handleCameraCancel}>
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className="camera-switch-btn"
-                  onClick={handleSwitchCamera}
-                  disabled={cameraLoading}
-                >
-                  Switch to {cameraFacingMode === "user" ? "Back" : "Front"} Camera
-                </button>
+            <div className="dashboard-card report-box monthly-activity-card">
+              <div className="section-heading">
+                <div>
+                  <p className="section-kicker">Monthly Activity</p>
+                  <h3>{currentMonthLabel}</h3>
+                </div>
+                <div className="section-icon-badge calendar">
+                  <CalendarDays size={18} />
+                </div>
+              </div>
+
+              <div className="calendar-summary">
+                <div>
+                  <span>Present</span>
+                  <strong>{monthlyPresentCount}</strong>
+                </div>
+                <div>
+                  <span>Absent</span>
+                  <strong>{monthlyAbsentCount}</strong>
+                </div>
+              </div>
+
+              <div className="calendar-legend">
+                <span><i className="tone present" />Present</span>
+                <span><i className="tone absent" />Absent</span>
+                <span><i className="tone half" />Half Day</span>
+                <span><i className="tone off" />Off</span>
+              </div>
+
+              <div className="activity-calendar">
+                {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
+                  <span key={day} className="calendar-weekday">
+                    {day}
+                  </span>
+                ))}
+
+                {activityWeeks.flat().map((cell, index) =>
+                  cell ? (
+                    <div
+                      key={cell.iso}
+                      className={`calendar-day ${cell.tone} ${cell.isToday ? "today" : ""}`}
+                    >
+                      <span>{cell.day}</span>
+                    </div>
+                  ) : (
+                    <div key={`empty-${index}`} className="calendar-day empty" />
+                  )
+                )}
               </div>
             </div>
-          </div>,
-          modalRoot
-        )}
-    </div>
-  </RefreshWrapper>
+          </div>
+
+          <section className="dashboard-card history-section">
+            <div className="section-heading">
+              <div>
+                <p className="section-kicker">Attendance History</p>
+                <h3>Recent activity</h3>
+              </div>
+            </div>
+
+            {history.length === 0 ? (
+              <div className="history-empty-state">
+                <CalendarDays size={20} />
+                <p>No attendance records.</p>
+              </div>
+            ) : null}
+
+            <div className="history-list">
+              {history.map((item) => {
+                const durationMinutes = getLunchDurationMinutes(item);
+                const itemTone = normalizeAttendanceTone(item?.status);
+                const itemStatusLabel = item?.status || "Pending";
+
+                return (
+                  <div className="history-card" key={item.id}>
+                    <div className="history-top">
+                      <div>
+                        <strong>{formatDate(item.date)}</strong>
+                        <p>{item.employee_name || userName}</p>
+                      </div>
+                      <span className={`badge ${itemTone}`}>{itemStatusLabel}</span>
+                    </div>
+
+                    {itemTone === "present" ? (
+                      <>
+                        <div className="history-timeline">
+                          <div className="timeline-row">
+                            <span className="timeline-icon checkin">IN</span>
+                            <div className="timeline-copy">
+                              <strong>Check In</strong>
+                              <span>Day started</span>
+                            </div>
+                            <span className="timeline-time">{formatTime(item.in_time)}</span>
+                          </div>
+
+                          <div className="timeline-row">
+                            <span className="timeline-icon lunch">LU</span>
+                            <div className="timeline-copy">
+                              <strong>Lunch</strong>
+                              <span>
+                                {formatTime(item.lunch_in)} to {formatTime(item.lunch_out)}
+                              </span>
+                            </div>
+                            <span className="timeline-time">
+                              {durationMinutes !== null ? `${durationMinutes} min` : "-"}
+                            </span>
+                          </div>
+
+                          <div className="timeline-row">
+                            <span className="timeline-icon checkout">OUT</span>
+                            <div className="timeline-copy">
+                              <strong>Check Out</strong>
+                              <span>Day closed</span>
+                            </div>
+                            <span className="timeline-time">{formatTime(item.out_time)}</span>
+                          </div>
+                        </div>
+
+                        <div className="history-meta-grid">
+                          <div className="history-meta-item">
+                            <span>Lunch Duration</span>
+                            <strong>{durationMinutes !== null ? `${durationMinutes} min` : "-"}</strong>
+                          </div>
+                          <div className="history-meta-item remarks">
+                            <span>Remarks</span>
+                            <strong>{item.remarks || "-"}</strong>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="history-leave-card">
+                        <span className="history-leave-label">Leave Reason</span>
+                        <p>{item.remarks || "-"}</p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="dashboard-card report-box leave-card">
+            <div className="section-heading">
+              <div>
+                <p className="section-kicker">Leave Request</p>
+                <h3>Apply leave</h3>
+              </div>
+            </div>
+
+            <textarea
+              className="leave-textarea"
+              placeholder="Enter leave reason..."
+              value={leaveReason}
+              onChange={(e) => setLeaveReason(e.target.value)}
+            />
+            <button
+              className="leave-btn"
+              onClick={submitLeave}
+              disabled={saving || !leaveReason.trim()}
+            >
+              {saving ? "Saving..." : "Submit Leave"}
+            </button>
+          </section>
+        </div>
+
+        {modalOpen && modalRoot &&
+          createPortal(
+            <div className="camera-modal">
+              <div className="camera-dialog">
+                <div className="camera-dialog-head">
+                  <div>
+                    <p className="section-kicker">Secure Capture</p>
+                    <h3>Capture Attendance Photo</h3>
+                  </div>
+                  <div className={`camera-status-chip ${locationStatus || "pending"}`}>
+                    <Camera size={16} />
+                    <span>
+                      {locationStatus === "inside"
+                        ? "Inside Office"
+                        : locationStatus === "outside"
+                        ? "Outside Office"
+                        : "Verifying GPS"}
+                    </span>
+                  </div>
+                </div>
+
+                {cameraError && <p className="camera-error">{cameraError}</p>}
+
+                <div className="camera-frame">
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    muted
+                    playsInline
+                    className={`camera-video ${
+                      locationStatus === "inside"
+                        ? "inside"
+                        : locationStatus === "outside"
+                        ? "outside"
+                        : ""
+                    }`}
+                  />
+                  <div className="camera-overlay-note">Align your face and keep the device steady</div>
+                </div>
+
+                <canvas ref={canvasRef} style={{ display: "none" }} />
+
+                <p className="camera-hint">
+                  Location:{" "}
+                  {locationForPunch
+                    ? `${locationForPunch.lat.toFixed(6)}, ${locationForPunch.lng.toFixed(6)}`
+                    : "Waiting for GPS..."}
+                </p>
+                {locationStatus === "outside" && (
+                  <p className="camera-warning">You are outside office location</p>
+                )}
+
+                <div className="camera-actions">
+                  <button
+                    className="punch-btn modal-action-btn"
+                    onClick={capturePhotoAndSubmit}
+                    disabled={saving || cameraLoading || locationStatus !== "inside"}
+                  >
+                    <span className="punch-btn-icon">
+                      <Camera size={18} />
+                    </span>
+                    <span className="punch-btn-copy">
+                      <span className="punch-btn-title">Capture & Submit</span>
+                      <span className="punch-btn-subtitle">Use current camera frame</span>
+                    </span>
+                  </button>
+                  <button className="punch-btn secondary modal-action-btn" onClick={handleCameraCancel}>
+                    <span className="punch-btn-icon">
+                      <ArrowLeft size={18} />
+                    </span>
+                    <span className="punch-btn-copy">
+                      <span className="punch-btn-title">Cancel</span>
+                      <span className="punch-btn-subtitle">Close without submitting</span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="camera-switch-btn"
+                    onClick={handleSwitchCamera}
+                    disabled={cameraLoading}
+                  >
+                    <RotateCcw size={18} />
+                    <span>Switch to {cameraFacingMode === "user" ? "Back" : "Front"} Camera</span>
+                  </button>
+                </div>
+              </div>
+            </div>,
+            modalRoot
+          )}
+      </div>
+    </RefreshWrapper>
   );
 }
