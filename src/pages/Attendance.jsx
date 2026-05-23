@@ -223,11 +223,26 @@ export default function Attendance() {
   const [locationStatus, setLocationStatus] = useState(null);
   const [cameraFacingMode, setCameraFacingMode] = useState("user");
   const [cameraLoading, setCameraLoading] = useState(false);
+  const [savingOverlay, setSavingOverlay] = useState(false);
   const [punchHint, setPunchHint] = useState("");
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const lunchTimerRef = useRef(null);
   const modalRoot = typeof document !== "undefined" ? document.body : null;
+useEffect(() => {
+  if (savingOverlay) {
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+  } else {
+    document.body.style.overflow = "";
+    document.documentElement.style.overflow = "";
+  }
+
+  return () => {
+    document.body.style.overflow = "";
+    document.documentElement.style.overflow = "";
+  };
+}, [savingOverlay]);
 
   const handleBack = () => {
     if (window.history.length > 1) {
@@ -755,6 +770,7 @@ export default function Attendance() {
       throw err;
     } finally {
       setSaving(false);
+      setSavingOverlay(false);
     }
   };
 
@@ -792,6 +808,7 @@ export default function Attendance() {
       return;
     }
     cleanupCamera();
+    setSavingOverlay(true);
     try {
       await sendPunchWithPhoto(type, coords, photo);
     } catch (_error) {
@@ -814,12 +831,7 @@ export default function Attendance() {
     setPendingPunchType("");
     setPunchHint("");
     setPreparingPunch(true);
-    let slowNetworkTimer;
     try {
-      slowNetworkTimer = setTimeout(() => {
-        setPunchHint("Preparing camera and location. This may take a bit longer on slower networks.");
-      }, 5000);
-
       const officeLocation =
         attendanceLocation || (await loadAttendanceLocation({ throwOnError: true }));
       if (!officeLocation) {
@@ -860,9 +872,6 @@ export default function Attendance() {
       setError(message);
       cleanupCamera();
     } finally {
-      if (slowNetworkTimer) {
-        clearTimeout(slowNetworkTimer);
-      }
       setPunchHint("");
       setPreparingPunch(false);
     }
@@ -1192,13 +1201,17 @@ export default function Attendance() {
                             <span className="timeline-icon lunch">LU</span>
                             <div className="timeline-copy">
                               <strong>Lunch</strong>
-                              <span>
-                                {formatTime(item.lunch_in)} to {formatTime(item.lunch_out)}
-                              </span>
+                             <span>
+  Lunch break timing
+</span>
                             </div>
-                            <span className="timeline-time">
-                              {durationMinutes !== null ? `${durationMinutes} min` : "-"}
-                            </span>
+                          <span className="timeline-time">
+  {item.lunch_in
+    ? `${formatTime(item.lunch_in)}${
+        item.lunch_out ? ` - ${formatTime(item.lunch_out)}` : ""
+      }`
+    : "-"}
+</span>
                           </div>
 
                           <div className="timeline-row">
@@ -1346,8 +1359,17 @@ export default function Attendance() {
               </div>
             </div>,
             modalRoot
-          )}
+          )} 
       </div>
+
+      {savingOverlay && (
+        <div className="attendance-overlay-loader" role="alert" aria-live="assertive">
+          <div className="attendance-overlay-content">
+            <div className="attendance-spinner" aria-hidden="true" />
+            <p>Saving attendance...</p>
+          </div>
+        </div>
+      )}
     </RefreshWrapper>
   );
 }
