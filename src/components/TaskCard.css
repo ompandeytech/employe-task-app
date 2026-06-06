@@ -1,14 +1,17 @@
 .task-card {
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(10px);
-  border-radius: 0px;
-  padding: 20px;
+  border-radius: 8px;
+  padding: 18px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
   position: relative;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
+  cursor: pointer;
+  outline: none;
 }
 
-.task-card:hover {
+.task-card:hover,
+.task-card:focus-visible {
   transform: translateY(-2px);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
 }
@@ -58,9 +61,61 @@
   background: linear-gradient(135deg, #8b5cf6, #7c3aed);
 }
 
+.status-badge--assigned {
+  background: linear-gradient(135deg, #0f766e, #0d9488);
+}
+
+.status-badge--follow_up,
+.status-badge--followup {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+}
+
+.status-badge--review {
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+}
+
+.status-badge--on_hold,
+.status-badge--onhold {
+  background: linear-gradient(135deg, #f97316, #ea580c);
+}
+
 .task-content {
   margin-bottom: 16px;
   padding-top: 10px;
+}
+
+.deadline-pill {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 10px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.deadline-pill span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.deadline-pill--schedule {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.deadline-pill--today {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.deadline-pill--overdue {
+  background: #fee2e2;
+  color: #991b1b;
 }
 
 .task-title {

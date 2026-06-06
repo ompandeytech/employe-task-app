@@ -117,9 +117,34 @@ const lookupEmployeeNameById = (lookup, rawId) => {
 const USE_FILTER_ENDPOINTS = import.meta.env.VITE_USE_TASK_FILTER_ENDPOINTS === 'true';
 const USE_UPDATE_STATUS_ENDPOINT = false;
 const PENDING_TASKS_KEY = 'pendingTasks';
+const TASK_CACHE_KEY = 'employeeTaskCache';
+
+const readTaskCache = () => {
+  try {
+    return JSON.parse(localStorage.getItem(TASK_CACHE_KEY) || 'null');
+  } catch {
+    return null;
+  }
+};
+
+const writeTaskCache = (state) => {
+  try {
+    localStorage.setItem(TASK_CACHE_KEY, JSON.stringify({
+      ...state,
+      cachedAt: new Date().toISOString(),
+    }));
+  } catch (error) {
+    console.error('Failed to cache tasks', error);
+  }
+};
 
 export const TaskProvider = ({ children }) => {
   const [taskState, setTaskState] = useState({ tasks: [], todayTasks: [] });
+  const [networkState, setNetworkState] = useState({
+    isOffline: typeof navigator !== 'undefined' ? !navigator.onLine : false,
+    usingCachedTasks: false,
+    lastSyncAt: null,
+  });
   const { tasks, todayTasks } = taskState;
   const tasksRef = useRef(tasks);
   const { notifyTaskReassigned, notifyTaskCompleted } = useNotificationContext();
@@ -167,6 +192,10 @@ export const TaskProvider = ({ children }) => {
     const value = String(status).trim().toLowerCase();
     if (value === 'inprogress' || value === 'in progress') return 'in_progress';
     if (value === 'completed') return 'done';
+    if (value === 'assigned') return 'assigned';
+    if (value === 'follow up' || value === 'followup' || value === 'follow_up') return 'follow_up';
+    if (value === 'review') return 'review';
+    if (value === 'on hold' || value === 'onhold' || value === 'on_hold') return 'on_hold';
     if (value === 'todo' || value === 'to do') return 'pending';
     return value;
   };
@@ -402,6 +431,12 @@ export const TaskProvider = ({ children }) => {
         tasks: uniqueTasks,
         todayTasks: normalizedTodayTasks,
       });
+      writeTaskCache({ tasks: uniqueTasks, todayTasks: normalizedTodayTasks });
+      setNetworkState({
+        isOffline: false,
+        usingCachedTasks: false,
+        lastSyncAt: new Date().toISOString(),
+      });
       console.log('Loaded tasks state:', uniqueTasks);
     } catch (err) {
       if (USE_FILTER_ENDPOINTS && isNotFound(err)) {
@@ -420,6 +455,12 @@ export const TaskProvider = ({ children }) => {
             tasks: uniqueTasks,
             todayTasks: normalizedTodayTasks,
           });
+          writeTaskCache({ tasks: uniqueTasks, todayTasks: normalizedTodayTasks });
+          setNetworkState({
+            isOffline: false,
+            usingCachedTasks: false,
+            lastSyncAt: new Date().toISOString(),
+          });
           console.log('Loaded tasks state (fallback):', uniqueTasks);
           return;
         } catch (fallbackErr) {
@@ -427,6 +468,24 @@ export const TaskProvider = ({ children }) => {
         }
       }
       console.error('Failed to load employee tasks', err);
+      const cached = readTaskCache();
+      if (cached?.tasks || cached?.todayTasks) {
+        setTaskState({
+          tasks: cached.tasks || [],
+          todayTasks: cached.todayTasks || [],
+        });
+        setNetworkState({
+          isOffline: true,
+          usingCachedTasks: true,
+          lastSyncAt: cached.cachedAt || null,
+        });
+        return;
+      }
+      setNetworkState((prev) => ({
+        ...prev,
+        isOffline: true,
+        usingCachedTasks: false,
+      }));
       setTaskState({ tasks: [], todayTasks: [] });
     }
   };
@@ -449,12 +508,17 @@ export const TaskProvider = ({ children }) => {
     };
 
     window.addEventListener('focus', handleRefresh);
+    window.addEventListener('online', handleRefresh);
+    window.addEventListener('offline', () => {
+      setNetworkState((prev) => ({ ...prev, isOffline: true }));
+    });
     window.addEventListener('tasks:refresh', handleRefresh);
     document.addEventListener('visibilitychange', handleVisibility);
 
     return () => {
       window.clearInterval(pollInterval);
       window.removeEventListener('focus', handleRefresh);
+      window.removeEventListener('online', handleRefresh);
       window.removeEventListener('tasks:refresh', handleRefresh);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
@@ -561,6 +625,7 @@ export const TaskProvider = ({ children }) => {
     const updatedTasks = tasks.map(t => t.id === taskId ? updatedTask : t);
     const updatedTodayTasks = todayTasks.map(t => t.id === taskId ? updatedTask : t);
     setTaskState(prev => ({ ...prev, tasks: updatedTasks, todayTasks: updatedTodayTasks }));
+    writeTaskCache({ tasks: updatedTasks, todayTasks: updatedTodayTasks });
     console.log('Updated task state:', updatedTasks);
 
     const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
@@ -603,6 +668,10 @@ export const TaskProvider = ({ children }) => {
       return tasks.filter(task => task.status === 'in_progress');
     }
 
+    if (status === 'completed') {
+      return tasks.filter(task => task.status === 'done');
+    }
+
     if (status === 'todo') {
       return tasks.filter(task => task.status === 'pending' && !task.reassignedTo);
     }
@@ -619,6 +688,7 @@ export const TaskProvider = ({ children }) => {
     // Filter from main tasks array to include recently updated tasks
     return tasks.filter((task) => 
       task.status !== 'done' && 
+      task.status !== 'completed' &&
       task.status !== 'reassigned'
     );
   };
@@ -629,6 +699,9 @@ export const TaskProvider = ({ children }) => {
     getTasksByStatus,
     getTodayTasks,
     refreshTasks: loadTasks,
+    isOffline: networkState.isOffline,
+    usingCachedTasks: networkState.usingCachedTasks,
+    lastSyncAt: networkState.lastSyncAt,
   };
 
   return (

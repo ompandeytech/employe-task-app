@@ -4,6 +4,7 @@ import { useTaskContext } from "../context/taskContextStore";
 import axios from "axios";
 import { API_BASE, getAuthHeaders } from "../utils/apiConfig";
 import TaskCard from "../components/TaskCard";
+import TaskDetailScreen from "../components/TaskDetailScreen";
 import RefreshWrapper from "../components/RefreshWrapper";
 import WorkspaceBottomNav from "../components/WorkspaceBottomNav";
 import Select from "react-select";
@@ -59,8 +60,49 @@ const formatNoteTime = (value) => {
   });
 };
 
+const normalizeTaskStatus = (status) => {
+  const value = String(status || "assigned").trim().toLowerCase();
+  if (value === "inprogress" || value === "in progress") return "in_progress";
+  if (value === "completed") return "done";
+  if (value === "follow up" || value === "followup") return "follow_up";
+  if (value === "on hold" || value === "onhold") return "on_hold";
+  return value;
+};
+
+const isTaskCompleted = (task) => normalizeTaskStatus(task.status) === "done";
+
+const getTaskDeadline = (task) =>
+  task?.due_date ||
+  task?.dueDate ||
+  task?.deadline ||
+  task?.deadline_at ||
+  task?.deadlineAt ||
+  task?.target_date ||
+  task?.targetDate ||
+  null;
+
+const isTaskOverdue = (task) => {
+  if (isTaskCompleted(task)) return false;
+  const dueValue = getTaskDeadline(task);
+  if (!dueValue) return false;
+  const due = new Date(dueValue);
+  if (Number.isNaN(due.getTime())) return false;
+  const today = new Date();
+  due.setHours(0, 0, 0, 0);
+  today.setHours(0, 0, 0, 0);
+  return due.getTime() < today.getTime();
+};
+
 export default function Tasks() {
-  const { updateTaskStatus, getTodayTasks, refreshTasks } = useTaskContext();
+  const {
+    tasks,
+    updateTaskStatus,
+    getTodayTasks,
+    refreshTasks,
+    isOffline,
+    usingCachedTasks,
+    lastSyncAt,
+  } = useTaskContext();
   const [showModal, setShowModal] = useState(false);
   const [modalType, setModalType] = useState("");
   const [selectedTask, setSelectedTask] = useState(null);
@@ -78,9 +120,33 @@ export default function Tasks() {
   const [noteSaving, setNoteSaving] = useState(false);
   const [noteError, setNoteError] = useState("");
   const [noteStatus, setNoteStatus] = useState("");
+  const [activeFilter, setActiveFilter] = useState("assigned");
+  const [detailTask, setDetailTask] = useState(null);
   const noteStatusTimer = useRef(null);
 
   const todoTasks = getTodayTasks();
+  const sourceTasks = activeFilter === "completed" ? tasks : todoTasks;
+  const summary = useMemo(() => {
+    return {
+      assigned: tasks.filter((task) => !isTaskCompleted(task) && normalizeTaskStatus(task.status) !== "reassigned").length,
+      in_progress: tasks.filter((task) => normalizeTaskStatus(task.status) === "in_progress").length,
+      completed: tasks.filter(isTaskCompleted).length,
+      overdue: tasks.filter(isTaskOverdue).length,
+    };
+  }, [tasks]);
+  const filteredTasks = useMemo(() => {
+    switch (activeFilter) {
+      case "in_progress":
+        return sourceTasks.filter((task) => normalizeTaskStatus(task.status) === "in_progress");
+      case "completed":
+        return tasks.filter(isTaskCompleted);
+      case "overdue":
+        return tasks.filter(isTaskOverdue);
+      case "assigned":
+      default:
+        return sourceTasks.filter((task) => !isTaskCompleted(task) && normalizeTaskStatus(task.status) !== "reassigned");
+    }
+  }, [activeFilter, sourceTasks, tasks]);
   const menuPortalTarget = typeof document !== "undefined" ? document.body : null;
   const modalRoot = typeof document !== "undefined" ? document.body : null;
 
@@ -209,6 +275,7 @@ export default function Tasks() {
   }, [employeeOptions, reassignEmployee]);
 
   const handleAction = async (task, action) => {
+    setDetailTask(null);
     if (action === "note-add") {
       openAddNoteModal(task);
       return;
@@ -493,6 +560,12 @@ export default function Tasks() {
   };
 
   const confirmButtonText = confirmButtonLabels[modalType] ?? "Confirm";
+  const dashboardCards = [
+    { key: "assigned", label: "Assigned Tasks", value: summary.assigned, icon: "fa-clipboard-list" },
+    { key: "in_progress", label: "In Progress", value: summary.in_progress, icon: "fa-spinner" },
+    { key: "completed", label: "Completed", value: summary.completed, icon: "fa-circle-check" },
+    { key: "overdue", label: "Overdue", value: summary.overdue, icon: "fa-triangle-exclamation" },
+  ];
 
   return (
     <>
@@ -503,7 +576,7 @@ export default function Tasks() {
               <p className="eyebrow">Today’s Work</p>
               <h1>Active Tasks</h1>
               <p className="subhead">
-                You have {todoTasks.length} task{todoTasks.length !== 1 ? "s" : ""} waiting.
+                You have {filteredTasks.length} task{filteredTasks.length !== 1 ? "s" : ""} in this view.
               </p>
             </div>
             <button className="refresh-btn" onClick={handleRefresh} disabled={isRefreshing}>
@@ -511,20 +584,48 @@ export default function Tasks() {
             </button>
           </header>
 
+          {(isOffline || usingCachedTasks) && (
+            <div className="offline-banner">
+              <i className="fas fa-wifi"></i>
+              <span>
+                Internet is unavailable. Showing cached tasks and retrying automatically
+                {lastSyncAt ? ` from ${formatNoteTime(lastSyncAt)}.` : "."}
+              </span>
+            </div>
+          )}
+
+          <section className="task-summary-grid" aria-label="Task dashboard summary">
+            {dashboardCards.map((card) => (
+              <button
+                type="button"
+                key={card.key}
+                className={`summary-card ${activeFilter === card.key ? "active" : ""}`}
+                onClick={() => setActiveFilter(card.key)}
+              >
+                <span className="summary-icon">
+                  <i className={`fas ${card.icon}`}></i>
+                </span>
+                <span>{card.label}</span>
+                <strong>{card.value}</strong>
+              </button>
+            ))}
+          </section>
+
           {noteStatus && <p className="note-status">{noteStatus}</p>}
           <section className="tasks-list">
-            {todoTasks.length === 0 ? (
+            {filteredTasks.length === 0 ? (
               <div className="empty-state">
                 <i className="fas fa-bell-slash"></i>
-                <h3>No active tasks</h3>
-                <p>Pull down to refresh or wait for new assignments.</p>
+                <h3>No tasks in this view</h3>
+                <p>Pull down to refresh or choose another dashboard card.</p>
               </div>
             ) : (
-              todoTasks.map((task) => (
+              filteredTasks.map((task) => (
                 <TaskCard
                   key={task.id ?? task.task_id ?? task.taskId}
                   task={task}
                   onAction={handleAction}
+                  onOpenDetails={setDetailTask}
                   showAddNote
                   showViewNotes
                 />
@@ -631,6 +732,18 @@ export default function Tasks() {
           modalRoot
         )}
 
+      {detailTask &&
+        modalRoot &&
+        createPortal(
+          <TaskDetailScreen
+            task={detailTask}
+            onClose={() => setDetailTask(null)}
+            onAction={handleAction}
+            onRefreshTask={handleRefresh}
+          />,
+          modalRoot
+        )}
+
       <WorkspaceBottomNav />
 
       <style>{`
@@ -702,6 +815,77 @@ export default function Tasks() {
         .refresh-btn:not(:disabled):hover {
           transform: translateY(-1px);
           box-shadow: 0 8px 20px rgba(79, 70, 229, 0.2);
+        }
+
+        .offline-banner {
+          margin: 0 16px 12px;
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+          padding: 11px 12px;
+          border-radius: 8px;
+          background: #fff7ed;
+          border: 1px solid #fed7aa;
+          color: #9a3412;
+          font-size: 12px;
+          line-height: 1.4;
+          text-align: left;
+        }
+
+        .offline-banner i {
+          margin-top: 2px;
+        }
+
+        .task-summary-grid {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 10px;
+          padding: 0 16px 16px;
+        }
+
+        .summary-card {
+          min-height: 86px;
+          border: 1px solid #e2e8f0;
+          border-radius: 8px;
+          background: #ffffff;
+          padding: 10px;
+          text-align: left;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          cursor: pointer;
+          box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
+          transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .summary-card.active {
+          border-color: #93c5fd;
+          box-shadow: 0 10px 24px rgba(37, 99, 235, 0.16);
+          transform: translateY(-1px);
+        }
+
+        .summary-icon {
+          width: 30px;
+          height: 30px;
+          border-radius: 8px;
+          display: grid;
+          place-items: center;
+          background: #eff6ff;
+          color: #1d4ed8;
+          font-size: 13px;
+        }
+
+        .summary-card span:not(.summary-icon) {
+          color: #64748b;
+          font-size: 11px;
+          font-weight: 800;
+          line-height: 1.25;
+        }
+
+        .summary-card strong {
+          color: #0f172a;
+          font-size: 22px;
+          line-height: 1;
         }
 
         .tasks-list {
@@ -902,6 +1086,10 @@ export default function Tasks() {
           .tasks-header {
             flex-direction: column;
             align-items: flex-start;
+          }
+
+          .task-summary-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
           }
 
           .modal-actions {

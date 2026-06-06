@@ -11,7 +11,17 @@ console.log("API_BASE:", API_BASE);
 
 export const getStoredUserToken = () => {
   const storedUser = parseStoredUser();
-  return storedUser?.token ?? null;
+  return (
+    storedUser?.token ??
+    storedUser?.accessToken ??
+    storedUser?.access_token ??
+    storedUser?.authToken ??
+    storedUser?.jwt ??
+    storedUser?.user?.token ??
+    localStorage.getItem("token") ??
+    localStorage.getItem("accessToken") ??
+    null
+  );
 };
 
 export const getAuthHeaders = () => {

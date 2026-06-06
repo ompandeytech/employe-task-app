@@ -21,10 +21,30 @@ const statusMeta = {
     color: '#8b5cf6',
     icon: 'fa-user-pen',
   },
+  assigned: {
+    label: 'Assigned',
+    color: '#0f766e',
+    icon: 'fa-clipboard-list',
+  },
+  follow_up: {
+    label: 'Follow Up',
+    color: '#d97706',
+    icon: 'fa-calendar-check',
+  },
+  review: {
+    label: 'Review',
+    color: '#2563eb',
+    icon: 'fa-magnifying-glass-chart',
+  },
+  on_hold: {
+    label: 'On Hold',
+    color: '#f97316',
+    icon: 'fa-pause-circle',
+  },
 };
 
 const getStatusInfo = (status) => {
-  const normalized = String(status || 'pending').trim().toLowerCase();
+  const normalized = String(status || 'pending').trim().toLowerCase().replace(/\s+/g, '_');
   if (statusMeta[normalized]) return statusMeta[normalized];
   if (normalized === 'inprogress') return statusMeta.in_progress;
   return statusMeta.pending;
@@ -48,14 +68,45 @@ const resolveAssignedTo = (assignedTo) => {
   return assignedTo || 'Unassigned';
 };
 
+const normalizeDateOnly = (date) => {
+  const normalized = new Date(date);
+  normalized.setHours(0, 0, 0, 0);
+  return normalized;
+};
+
+const getDueDate = (task) =>
+  task.due_date ||
+  task.dueDate ||
+  task.deadline ||
+  task.deadline_at ||
+  task.deadlineAt ||
+  task.target_date ||
+  task.targetDate ||
+  null;
+
+const getDeadlineState = (task) => {
+  const dueDate = getDueDate(task);
+  if (!dueDate) return { tone: 'schedule', label: 'On schedule', dueDate: null };
+  const parsedDue = new Date(dueDate);
+  if (Number.isNaN(parsedDue.getTime())) {
+    return { tone: 'schedule', label: 'On schedule', dueDate: null };
+  }
+  const today = normalizeDateOnly(new Date());
+  const due = normalizeDateOnly(parsedDue);
+  if (due.getTime() < today.getTime()) return { tone: 'overdue', label: 'Overdue', dueDate };
+  if (due.getTime() === today.getTime()) return { tone: 'today', label: 'Due today', dueDate };
+  return { tone: 'schedule', label: 'On schedule', dueDate };
+};
+
 export default function TaskCard({
   task,
   onAction,
   actions,
   showAddNote = false,
   showViewNotes = false,
+  onOpenDetails,
 }) {
-  const status = String(task.status || 'pending').trim().toLowerCase();
+  const status = String(task.status || 'pending').trim().toLowerCase().replace(/\s+/g, '_');
   const metadata = getStatusInfo(status);
   const assignedTo = resolveAssignedTo(task.assignedTo);
   const progress = task.progress == null ? 0 : Number(task.progress);
@@ -63,6 +114,7 @@ export default function TaskCard({
     task.reassigned_by_name || task.reassigned_by || task.reassignedBy;
   const reassignedToName = task.reassigned_to_name || task.reassignedToName;
   const isReassigned = Boolean(reassignedBy);
+  const deadline = getDeadlineState(task);
 
   const defaultActions = [
     { action: 'done', label: 'Done', icon: 'fa-circle-check', className: 'done' },
@@ -83,6 +135,15 @@ export default function TaskCard({
   return (
     <div
       className="task-card"
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpenDetails?.(task)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onOpenDetails?.(task);
+        }
+      }}
       style={{
         borderLeft: `4px solid ${isReassigned ? "#8b5cf6" : metadata.color}`,
       }}
@@ -97,6 +158,10 @@ export default function TaskCard({
       </div>
 
       <div className="task-content">
+        <div className={`deadline-pill deadline-pill--${deadline.tone}`}>
+          <span></span>
+          {deadline.label}
+        </div>
         <h3 className="task-title">{task.title}</h3>
         <p className="task-description">{task.description}</p>
 
@@ -121,6 +186,12 @@ export default function TaskCard({
             <i className="fas fa-chart-line"></i>
             <span>Progress: {progress}%</span>
           </div>
+          {deadline.dueDate && (
+            <div className="detail-item">
+              <i className="fas fa-calendar-day"></i>
+              <span>Due: {formatDate(deadline.dueDate)}</span>
+            </div>
+          )}
           {status === 'in_progress' && task.startedAt && (
             <div className="detail-item">
               <i className="fas fa-play"></i>
@@ -179,7 +250,10 @@ export default function TaskCard({
             key={action}
             type="button"
             className={`action-btn ${className}`}
-            onClick={() => onAction?.(task, action)}
+            onClick={(event) => {
+              event.stopPropagation();
+              onAction?.(task, action);
+            }}
           >
             <i className={`fas ${icon}`}></i>
             <span>{label}</span>
@@ -194,7 +268,10 @@ export default function TaskCard({
               key={action}
               type="button"
               className={`action-btn ${className}`}
-              onClick={() => onAction?.(task, action)}
+              onClick={(event) => {
+                event.stopPropagation();
+                onAction?.(task, action);
+              }}
             >
               <i className={`fas ${icon}`}></i>
               <span>{label}</span>
