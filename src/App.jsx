@@ -21,6 +21,8 @@ import DoneTasks from "./pages/DoneTasks";
 import InProgressTasks from "./pages/InProgressTasks";
 import PendingTasks from "./pages/PendingTasks";
 import ReassignedTasks from "./pages/ReassignedTasks";
+import TaskAssign from "./pages/TaskAssign";
+import TaskHistory from "./pages/TaskHistory";
 
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -204,6 +206,22 @@ function App() {
                   </ProtectedRoute>
                 }
               />
+              <Route
+                path="/task-assign"
+                element={
+                  <ProtectedRoute page="tasks">
+                    <TaskAssign />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/task-history"
+                element={
+                  <ProtectedRoute page="tasks">
+                    <TaskHistory />
+                  </ProtectedRoute>
+                }
+              />
                 
               <Route
                 path="/report"
@@ -324,5 +342,4 @@ function App() {
 }
 
 export default App;
-
 
