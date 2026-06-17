@@ -78,11 +78,12 @@ useEffect(() => {
                 <span>My Task</span>
               </div>
 
-              <div className="menu-item" onClick={() => navigate("/task-assign")}>
-                <i className="fas fa-user-check"></i>
-                <span>Task Assign</span>
-              </div>
-
+    {JSON.parse(localStorage.getItem("user") || "{}")?.role === "TL" && (
+  <div className="menu-item" onClick={() => navigate("/task-assign")}>
+    <i className="fas fa-user-check"></i>
+    <span>Task Assign</span>
+  </div>
+)}
               <div className="menu-item" onClick={() => navigate("/report")}>
                 <i className="fas fa-chart-bar"></i>
                 <span>My Report</span>
