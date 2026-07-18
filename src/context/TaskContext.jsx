@@ -147,6 +147,7 @@ export const TaskProvider = ({ children }) => {
   });
   const { tasks, todayTasks } = taskState;
   const tasksRef = useRef(tasks);
+  const loadingTasksRef = useRef(false);
   const { notifyTaskReassigned, notifyTaskCompleted } = useNotificationContext();
   const employeeLookupRef = useRef(new Map());
   const employeesLoadedRef = useRef(false);
@@ -354,16 +355,23 @@ export const TaskProvider = ({ children }) => {
   };
 
   const loadTasks = async () => {
+    if (loadingTasksRef.current) return;
+    loadingTasksRef.current = true;
     const userId = getLoggedInUserId();
 
     if (!userId) {
       setTimeout(() => {
         setTaskState({ tasks: [], todayTasks: [] });
       }, 0);
+      loadingTasksRef.current = false;
       return;
     }
 
-    await ensureEmployeesLoaded();
+    try {
+      await ensureEmployeesLoaded();
+    } catch (err) {
+      console.error('Failed to prepare employee directory for tasks', err);
+    }
 
     const previousPendingTasksMap = new Map(
       tasksRef.current
@@ -394,22 +402,16 @@ export const TaskProvider = ({ children }) => {
       const uniqueTasksMap = new Map(tasksToMerge.map((t) => [t.id, t]));
 
       previousPendingTasksMap.forEach((prevTask, id) => {
-        if (!uniqueTasksMap.has(id)) {
-          uniqueTasksMap.set(id, prevTask);
-        } else {
-          const existing = uniqueTasksMap.get(id);
-          if (existing.status === 'pending') {
-            existing.pendingReason = existing.pendingReason ?? prevTask.pendingReason;
-            existing.pendingAt = existing.pendingAt ?? prevTask.pendingAt;
-          }
+        const existing = uniqueTasksMap.get(id);
+        if (existing?.status === 'pending') {
+          existing.pendingReason = existing.pendingReason ?? prevTask.pendingReason;
+          existing.pendingAt = existing.pendingAt ?? prevTask.pendingAt;
         }
       });
 
       localPending.forEach((prevTask) => {
         const existing = uniqueTasksMap.get(prevTask.id);
-        if (!existing) {
-          uniqueTasksMap.set(prevTask.id, prevTask);
-        } else if (existing.status === 'pending') {
+        if (existing?.status === 'pending') {
           existing.pendingReason = existing.pendingReason ?? prevTask.pendingReason;
           existing.pendingAt = existing.pendingAt ?? prevTask.pendingAt;
         }
@@ -423,7 +425,9 @@ export const TaskProvider = ({ children }) => {
       const todayRows = await fetchTodayTasks(userId, employeeRows);
 
       const normalizedEmployeeTasks = normalizeEmployeeRows(employeeRows);
-      const mergedTasks = [...normalizedEmployeeTasks, ...localPending];
+      const serverTaskIds = new Set(normalizedEmployeeTasks.map((task) => task.id));
+      const syncedLocalPending = localPending.filter((task) => serverTaskIds.has(task.id));
+      const mergedTasks = [...normalizedEmployeeTasks, ...syncedLocalPending];
       const uniqueTasks = mergeUniqueTasks(mergedTasks);
       const normalizedTodayTasks = todayRows.map(normalizeTask);
 
@@ -447,7 +451,9 @@ export const TaskProvider = ({ children }) => {
           );
 
           const normalizedEmployeeTasks = normalizeEmployeeRows(employeeRows);
-          const mergedTasks = [...normalizedEmployeeTasks, ...localPending];
+          const serverTaskIds = new Set(normalizedEmployeeTasks.map((task) => task.id));
+          const syncedLocalPending = localPending.filter((task) => serverTaskIds.has(task.id));
+          const mergedTasks = [...normalizedEmployeeTasks, ...syncedLocalPending];
           const uniqueTasks = mergeUniqueTasks(mergedTasks);
           const normalizedTodayTasks = todayRows.map(normalizeTask);
 
@@ -487,6 +493,8 @@ export const TaskProvider = ({ children }) => {
         usingCachedTasks: false,
       }));
       setTaskState({ tasks: [], todayTasks: [] });
+    } finally {
+      loadingTasksRef.current = false;
     }
   };
 
@@ -499,7 +507,7 @@ export const TaskProvider = ({ children }) => {
     const handleRefresh = () => {
       loadTasks();
     };
-    const pollInterval = window.setInterval(loadTasks, 15000);
+    const pollInterval = window.setInterval(loadTasks, 8000);
 
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
