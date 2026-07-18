@@ -64,6 +64,7 @@ const normalizeTaskStatus = (status) => {
   const value = String(status || "assigned").trim().toLowerCase();
   if (value === "inprogress" || value === "in progress") return "in_progress";
   if (value === "completed") return "done";
+  if (value === "todo" || value === "to do") return "pending";
   if (value === "follow up" || value === "followup") return "follow_up";
   if (value === "on hold" || value === "onhold") return "on_hold";
   return value;
@@ -129,6 +130,7 @@ export default function Tasks() {
   const summary = useMemo(() => {
     return {
       assigned: tasks.filter((task) => !isTaskCompleted(task) && normalizeTaskStatus(task.status) !== "reassigned").length,
+      pending: tasks.filter((task) => normalizeTaskStatus(task.status) === "pending" && !task.reassignedTo).length,
       in_progress: tasks.filter((task) => normalizeTaskStatus(task.status) === "in_progress").length,
       completed: tasks.filter(isTaskCompleted).length,
       overdue: tasks.filter(isTaskOverdue).length,
@@ -136,6 +138,8 @@ export default function Tasks() {
   }, [tasks]);
   const filteredTasks = useMemo(() => {
     switch (activeFilter) {
+      case "pending":
+        return sourceTasks.filter((task) => normalizeTaskStatus(task.status) === "pending" && !task.reassignedTo);
       case "in_progress":
         return sourceTasks.filter((task) => normalizeTaskStatus(task.status) === "in_progress");
       case "completed":
@@ -562,6 +566,7 @@ export default function Tasks() {
   const confirmButtonText = confirmButtonLabels[modalType] ?? "Confirm";
   const dashboardCards = [
     { key: "assigned", label: "Assigned Tasks", value: summary.assigned, icon: "fa-clipboard-list" },
+    { key: "pending", label: "Pending", value: summary.pending, icon: "fa-clock" },
     { key: "in_progress", label: "In Progress", value: summary.in_progress, icon: "fa-spinner" },
     { key: "completed", label: "Completed", value: summary.completed, icon: "fa-circle-check" },
     { key: "overdue", label: "Overdue", value: summary.overdue, icon: "fa-triangle-exclamation" },
@@ -838,7 +843,7 @@ export default function Tasks() {
 
         .task-summary-grid {
           display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
+          grid-template-columns: repeat(5, minmax(0, 1fr));
           gap: 10px;
           padding: 0 16px 16px;
         }
