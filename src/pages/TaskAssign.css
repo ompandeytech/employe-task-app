@@ -174,6 +174,31 @@
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
 }
 
+.task-assign-select__control {
+  min-height: 44px;
+  border-color: #cbd5e1 !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+}
+
+.task-assign-select__control--is-focused {
+  border-color: #2563eb !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12) !important;
+}
+
+.task-assign-select__value-container {
+  padding: 4px 8px !important;
+}
+
+.task-assign-select__multi-value {
+  max-width: 100%;
+  border-radius: 6px !important;
+}
+
+.task-assign-select__multi-value__label {
+  white-space: normal !important;
+}
+
 .task-assign-form-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -290,6 +315,11 @@
   color: #c2410c;
 }
 
+.task-status-badge.mixed {
+  background: #e2e8f0;
+  color: #334155;
+}
+
 .task-progress-cell {
   display: grid;
   gap: 6px;
@@ -388,5 +418,71 @@
 
   .task-assign-header h1 {
     font-size: 1.05rem;
+  }
+
+  .task-assign-table-wrap {
+    overflow: visible;
+  }
+
+  .task-assign-table {
+    display: block;
+    min-width: 0;
+  }
+
+  .task-assign-table thead {
+    display: none;
+  }
+
+  .task-assign-table tbody {
+    display: grid;
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .task-assign-table tr {
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #ffffff;
+  }
+
+  .task-assign-table td {
+    display: grid;
+    grid-template-columns: minmax(86px, 36%) minmax(0, 1fr);
+    gap: 10px;
+    padding: 0;
+    border-bottom: 0;
+    font-size: 0.88rem;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+  }
+
+  .task-assign-title-cell {
+    order: -1;
+  }
+
+  .task-assign-table td::before {
+    content: attr(data-label);
+    color: #64748b;
+    font-size: 0.72rem;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+
+  .task-assign-title-cell strong,
+  .task-assign-title-cell span {
+    overflow-wrap: anywhere;
+  }
+
+  .task-assign-title-cell span {
+    display: block;
+    -webkit-line-clamp: unset;
+    overflow: visible;
+  }
+
+  .task-progress-cell {
+    min-width: 0;
   }
 }

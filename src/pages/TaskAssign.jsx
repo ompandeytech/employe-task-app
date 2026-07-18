@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import Select from "react-select";
 import client from "../api/client";
 import {
   PROGRESS_OPTIONS,
@@ -22,15 +23,18 @@ import {
 import "./TaskAssign.css";
 
 function StatusBadge({ status }) {
+  if (status === "mixed") {
+    return <span className="task-status-badge mixed">Mixed</span>;
+  }
   const normalized = normalizeStatus(status);
   return <span className={`task-status-badge ${normalized.replace("_", "-")}`}>{getStatusLabel(normalized)}</span>;
 }
 
-function ProgressBar({ value }) {
+function ProgressBar({ value, label }) {
   const progress = getProgress({ progress: value });
   return (
     <div className="task-progress-cell">
-      <span className="task-progress-label">{progress}%</span>
+      <span className="task-progress-label">{label || `${progress}%`}</span>
       <div className="task-progress-track" aria-hidden="true">
         <div className="task-progress-fill" style={{ width: `${progress}%` }} />
       </div>
@@ -49,7 +53,7 @@ export default function TaskAssign() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState({ type: "", text: "" });
   const [form, setForm] = useState({
-    employeeId: "",
+    employeeIds: [],
     title: "",
     description: "",
     priority: "Medium",
@@ -70,6 +74,84 @@ export default function TaskAssign() {
   const assignedByMeTasks = useMemo(
     () => tasks.filter((task) => isAssignedByCurrentUser(task, currentUser)),
     [tasks, currentUser]
+  );
+
+  const groupedAssignedByMeTasks = useMemo(() => {
+    const groups = new Map();
+    assignedByMeTasks.forEach((task) => {
+      const assignedDate = getAssignedDate(task) || "";
+      const groupId =
+        task.assignment_group_id ||
+        task.assignmentGroupId ||
+        [
+          task.assigned_by ?? task.assignedBy ?? task.assigned_by_id ?? task.assignedById ?? currentUserId ?? "",
+          assignedDate,
+          task.title || "",
+          task.description || "",
+          task.priority || "",
+          getDueDate(task) || "",
+        ].join("|");
+
+      if (!groups.has(groupId)) {
+        groups.set(groupId, {
+          ...task,
+          groupId,
+          records: [],
+          assignedEmployeeNames: [],
+          statusValues: [],
+          progressValues: [],
+        });
+      }
+
+      const group = groups.get(groupId);
+      const employeeName = getTaskEmployeeName(task, employeesById);
+      if (employeeName && employeeName !== "-" && !group.assignedEmployeeNames.includes(employeeName)) {
+        group.assignedEmployeeNames.push(employeeName);
+      }
+      group.records.push(task);
+      group.statusValues.push(normalizeStatus(task.status));
+      group.progressValues.push(getProgress(task));
+    });
+
+    return Array.from(groups.values()).map((group) => {
+      const uniqueStatuses = [...new Set(group.statusValues)];
+      const uniqueProgress = [...new Set(group.progressValues)];
+      const averageProgress = Math.round(
+        group.progressValues.reduce((total, value) => total + value, 0) / Math.max(group.progressValues.length, 1)
+      );
+
+      return {
+        ...group,
+        assignedEmployeeText: group.assignedEmployeeNames.join(", ") || "-",
+        displayStatus: uniqueStatuses.length === 1 ? uniqueStatuses[0] : "mixed",
+        displayProgress: uniqueProgress.length === 1 ? uniqueProgress[0] : averageProgress,
+        progressLabel: uniqueProgress.length === 1 ? `${uniqueProgress[0]}%` : `Mixed (${averageProgress}%)`,
+      };
+    });
+  }, [assignedByMeTasks, currentUserId, employeesById]);
+
+  const employeeOptions = useMemo(() => {
+    const seen = new Set();
+    return employees
+      .map((employee) => {
+        const id = getEmployeeId(employee);
+        if (id == null) return null;
+        const key = String(id);
+        if (seen.has(key)) return null;
+        seen.add(key);
+        return {
+          value: id,
+          label: getEmployeeName(employee),
+          employee,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [employees]);
+
+  const selectedEmployeeOptions = useMemo(
+    () => employeeOptions.filter((option) => form.employeeIds.some((id) => String(id) === String(option.value))),
+    [employeeOptions, form.employeeIds]
   );
 
   const loadData = useCallback(async () => {
@@ -102,7 +184,7 @@ export default function TaskAssign() {
 
   const resetForm = () => {
     setForm({
-      employeeId: "",
+      employeeIds: [],
       title: "",
       description: "",
       priority: "Medium",
@@ -114,9 +196,13 @@ export default function TaskAssign() {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    const employee = employees.find((item) => String(getEmployeeId(item)) === String(form.employeeId));
-    if (!employee) {
-      setMessage({ type: "error", text: "Please select an employee." });
+    const selectedEmployeesMap = new Map();
+    selectedEmployeeOptions.forEach((option) => {
+      selectedEmployeesMap.set(String(option.value), option.employee);
+    });
+    const selectedEmployees = Array.from(selectedEmployeesMap.values());
+    if (selectedEmployees.length === 0) {
+      setMessage({ type: "error", text: "Please select at least one employee." });
       return;
     }
     if (!form.title.trim()) {
@@ -124,31 +210,40 @@ export default function TaskAssign() {
       return;
     }
 
-    const employeeId = getEmployeeId(employee);
-    const employeeName = getEmployeeName(employee);
-    const payload = {
-      title: form.title.trim(),
-      description: form.description.trim(),
-      priority: form.priority,
-      due_date: form.dueDate || null,
-      status: form.status,
-      progress: Number(form.progress),
-      assigned_to: employeeId,
-      employee_id: employeeId,
-      employee_name: employeeName,
-      assigned_employee_ids: [employeeId],
-      assigned_employee_names: [employeeName],
-      assigned_by: currentUserId,
-      assigned_by_id: currentUserId,
-      assigned_by_name: currentUserName,
-      created_by: currentUserName,
-      assigned_at: new Date().toISOString(),
+    const assignedAt = new Date().toISOString();
+    const createPayload = (employee) => {
+      const employeeId = getEmployeeId(employee);
+      const employeeName = getEmployeeName(employee);
+      return {
+        title: form.title.trim(),
+        description: form.description.trim(),
+        priority: form.priority,
+        due_date: form.dueDate || null,
+        status: form.status,
+        progress: Number(form.progress),
+        assigned_to: employeeId,
+        employee_id: employeeId,
+        employee_name: employeeName,
+        assigned_employee_ids: [employeeId],
+        assigned_employee_names: [employeeName],
+        assigned_by: currentUserId,
+        assigned_by_id: currentUserId,
+        assigned_by_name: currentUserName,
+        created_by: currentUserName,
+        assigned_at: assignedAt,
+      };
     };
 
     setSaving(true);
     try {
-      await client.post("/tasks", payload);
-      setMessage({ type: "success", text: "Task assigned successfully." });
+      await Promise.all(selectedEmployees.map((employee) => client.post("/tasks", createPayload(employee))));
+      setMessage({
+        type: "success",
+        text:
+          selectedEmployees.length === 1
+            ? "Task assigned successfully."
+            : `Task assigned successfully to ${selectedEmployees.length} employees.`,
+      });
       resetForm();
       await loadData();
       window.dispatchEvent(new Event("tasks:refresh"));
@@ -189,22 +284,16 @@ export default function TaskAssign() {
             <form className="task-assign-form" onSubmit={handleSubmit}>
               <div className="task-assign-field">
                 <label htmlFor="task-employee">Employee</label>
-                <select
-                  id="task-employee"
-                  value={form.employeeId}
-                  onChange={(event) => updateForm("employeeId", event.target.value)}
-                >
-                  <option value="">Select employee</option>
-                  {employees.map((employee) => {
-                    const id = getEmployeeId(employee);
-                    if (id == null) return null;
-                    return (
-                      <option key={id} value={id}>
-                        {getEmployeeName(employee)}
-                      </option>
-                    );
-                  })}
-                </select>
+                <Select
+                  inputId="task-employee"
+                  classNamePrefix="task-assign-select"
+                  value={selectedEmployeeOptions}
+                  options={employeeOptions}
+                  onChange={(options) => updateForm("employeeIds", (options || []).map((option) => option.value))}
+                  placeholder="Select employees"
+                  isMulti
+                  closeMenuOnSelect={false}
+                />
               </div>
 
               <div className="task-assign-field">
@@ -296,14 +385,14 @@ export default function TaskAssign() {
           <section className="task-assign-panel">
             <div className="task-assign-toolbar">
               <div>
-                <div className="task-assign-count">{assignedByMeTasks.length} assigned by you</div>
+                <div className="task-assign-count">{groupedAssignedByMeTasks.length} assigned by you</div>
               </div>
               <button className="task-assign-secondary-btn" type="button" onClick={loadData} disabled={loading}>
                 {loading ? "Loading..." : "Refresh"}
               </button>
             </div>
 
-            {assignedByMeTasks.length === 0 ? (
+            {groupedAssignedByMeTasks.length === 0 ? (
               <div className="task-assign-empty">
                 <i className="fas fa-clipboard-list"></i>
                 <strong>No assigned tasks found</strong>
@@ -323,20 +412,20 @@ export default function TaskAssign() {
                     </tr>
                   </thead>
                   <tbody>
-                    {assignedByMeTasks.map((task) => (
-                      <tr key={task.id ?? task.task_id ?? `${task.title}-${getAssignedDate(task)}`}>
-                        <td>{getTaskEmployeeName(task, employeesById)}</td>
-                        <td className="task-assign-title-cell">
+                    {groupedAssignedByMeTasks.map((task) => (
+                      <tr key={task.groupId ?? task.id ?? task.task_id ?? `${task.title}-${getAssignedDate(task)}`}>
+                        <td data-label="Assigned Employees">{task.assignedEmployeeText}</td>
+                        <td className="task-assign-title-cell" data-label="Task">
                           <strong>{task.title || "-"}</strong>
                           <span>{task.description || "No description"}</span>
                         </td>
-                        <td>{task.priority || "-"}</td>
-                        <td>{formatDate(getDueDate(task))}</td>
-                        <td>
-                          <StatusBadge status={task.status} />
+                        <td data-label="Priority">{task.priority || "-"}</td>
+                        <td data-label="Due Date">{formatDate(getDueDate(task))}</td>
+                        <td data-label="Status">
+                          <StatusBadge status={task.displayStatus} />
                         </td>
-                        <td>
-                          <ProgressBar value={getProgress(task)} />
+                        <td data-label="Progress">
+                          <ProgressBar value={task.displayProgress} label={task.progressLabel} />
                         </td>
                       </tr>
                     ))}
