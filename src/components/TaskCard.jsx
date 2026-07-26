@@ -63,6 +63,21 @@ const formatDate = (dateString) => {
   });
 };
 
+const formatFollowupTime = (value) => {
+  const match = String(value || '').trim().match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*([AP]M)?$/i);
+  if (!match) return '';
+
+  let hour = Number(match[1]);
+  const minute = match[2];
+  const period = match[3]?.toUpperCase();
+  if (period === 'PM' && hour < 12) hour += 12;
+  if (period === 'AM' && hour === 12) hour = 0;
+
+  const suffix = hour >= 12 ? 'PM' : 'AM';
+  const displayHour = hour % 12 || 12;
+  return `${String(displayHour).padStart(2, '0')}:${minute} ${suffix}`;
+};
+
 const resolveAssignedTo = (assignedTo) => {
   if (Array.isArray(assignedTo)) return assignedTo.join(', ');
   return assignedTo || 'Unassigned';
@@ -115,6 +130,7 @@ export default function TaskCard({
   const reassignedToName = task.reassigned_to_name || task.reassignedToName;
   const isReassigned = Boolean(reassignedBy);
   const deadline = getDeadlineState(task);
+  const todayFollowupTime = formatFollowupTime(task.todayFollowupTime);
 
   const defaultActions = [
     { action: 'done', label: 'Done', icon: 'fa-circle-check', className: 'done' },
@@ -186,6 +202,12 @@ export default function TaskCard({
             <i className="fas fa-chart-line"></i>
             <span>Progress: {progress}%</span>
           </div>
+          {todayFollowupTime && (
+            <div className="detail-item">
+              <i className="fas fa-calendar-check"></i>
+              <span>Follow-up Today: {todayFollowupTime}</span>
+            </div>
+          )}
           {deadline.dueDate && (
             <div className="detail-item">
               <i className="fas fa-calendar-day"></i>

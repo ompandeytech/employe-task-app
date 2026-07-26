@@ -94,6 +94,86 @@ const isTaskOverdue = (task) => {
   return due.getTime() < today.getTime();
 };
 
+const extractList = (payload) => {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.followups)) return payload.followups;
+  return payload && typeof payload === "object" ? [payload] : [];
+};
+
+const getFollowupDate = (item) =>
+  item?.followup_date ?? item?.followupDate ?? item?.date ?? null;
+
+const getFollowupTime = (item) =>
+  item?.followup_time ?? item?.followupTime ?? extractTimeFromDateTime(getFollowupDate(item));
+
+const extractTimeFromDateTime = (value) => {
+  const match = String(value || "").trim().match(/[T ](\d{1,2}:\d{2})(?::\d{2})?/);
+  return match?.[1] || "";
+};
+
+const parseDateOnly = (value) => {
+  if (!value) return null;
+  const text = String(value).trim();
+  const isoMatch = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (isoMatch) {
+    return {
+      year: Number(isoMatch[1]),
+      month: Number(isoMatch[2]) - 1,
+      day: Number(isoMatch[3]),
+    };
+  }
+  const indianMatch = text.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+  if (indianMatch) {
+    return {
+      year: Number(indianMatch[3]),
+      month: Number(indianMatch[2]) - 1,
+      day: Number(indianMatch[1]),
+    };
+  }
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return {
+    year: parsed.getFullYear(),
+    month: parsed.getMonth(),
+    day: parsed.getDate(),
+  };
+};
+
+const isTodayFollowupDate = (value) => {
+  const date = parseDateOnly(value);
+  if (!date) return false;
+  const today = new Date();
+  return (
+    date.year === today.getFullYear() &&
+    date.month === today.getMonth() &&
+    date.day === today.getDate()
+  );
+};
+
+const parseFollowupTimeValue = (value) => {
+  const text = String(value || "").trim();
+  const match = text.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*([AP]M)?$/i);
+  if (!match) return Number.MAX_SAFE_INTEGER;
+  let hour = Number(match[1]);
+  const minute = Number(match[2]);
+  const period = match[3]?.toUpperCase();
+  if (period === "PM" && hour < 12) hour += 12;
+  if (period === "AM" && hour === 12) hour = 0;
+  return hour * 60 + minute;
+};
+
+const getTaskId = (task) => task?.id ?? task?.task_id ?? task?.taskId;
+
+const buildDirectFollowups = (task) => {
+  const rows = [];
+  if (getFollowupDate(task)) rows.push(task);
+  if (Array.isArray(task?.followups)) rows.push(...task.followups);
+  if (Array.isArray(task?.follow_ups)) rows.push(...task.follow_ups);
+  if (Array.isArray(task?.followup)) rows.push(...task.followup);
+  return rows;
+};
+
 export default function Tasks() {
   const {
     tasks,
@@ -123,6 +203,8 @@ export default function Tasks() {
   const [noteStatus, setNoteStatus] = useState("");
   const [activeFilter, setActiveFilter] = useState("assigned");
   const [detailTask, setDetailTask] = useState(null);
+  const [todayFollowupEntries, setTodayFollowupEntries] = useState([]);
+  const [followupLoadError, setFollowupLoadError] = useState("");
   const noteStatusTimer = useRef(null);
 
   const todoTasks = getTodayTasks();
@@ -134,8 +216,9 @@ export default function Tasks() {
       in_progress: tasks.filter((task) => normalizeTaskStatus(task.status) === "in_progress").length,
       completed: tasks.filter(isTaskCompleted).length,
       overdue: tasks.filter(isTaskOverdue).length,
+      today_followup: todayFollowupEntries.length,
     };
-  }, [tasks]);
+  }, [tasks, todayFollowupEntries.length]);
   const filteredTasks = useMemo(() => {
     switch (activeFilter) {
       case "pending":
@@ -146,11 +229,16 @@ export default function Tasks() {
         return tasks.filter(isTaskCompleted);
       case "overdue":
         return tasks.filter(isTaskOverdue);
+      case "today_followup":
+        return todayFollowupEntries.map(({ task, followup }) => ({
+          ...task,
+          todayFollowupTime: getFollowupTime(followup),
+        }));
       case "assigned":
       default:
         return sourceTasks.filter((task) => !isTaskCompleted(task) && normalizeTaskStatus(task.status) !== "reassigned");
     }
-  }, [activeFilter, sourceTasks, tasks]);
+  }, [activeFilter, sourceTasks, tasks, todayFollowupEntries]);
   const menuPortalTarget = typeof document !== "undefined" ? document.body : null;
   const modalRoot = typeof document !== "undefined" ? document.body : null;
 
@@ -180,6 +268,96 @@ export default function Tasks() {
   useEffect(() => {
     loadEmployees();
   }, [loadEmployees]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadTodayFollowups = async () => {
+      const activeTasks = tasks.filter((task) => !isTaskCompleted(task));
+      if (!activeTasks.length) {
+        setTodayFollowupEntries([]);
+        setFollowupLoadError("");
+        return;
+      }
+
+      const entries = [];
+      const tasksNeedingFollowupFetch = [];
+
+      activeTasks.forEach((task) => {
+        const todayRows = buildDirectFollowups(task).filter((item) =>
+          isTodayFollowupDate(getFollowupDate(item))
+        );
+        if (todayRows.length) {
+          const firstTodayRow = todayRows.sort(
+            (a, b) => parseFollowupTimeValue(getFollowupTime(a)) - parseFollowupTimeValue(getFollowupTime(b))
+          )[0];
+          entries.push({
+            task,
+            followup: firstTodayRow,
+            timeSort: parseFollowupTimeValue(getFollowupTime(firstTodayRow)),
+          });
+        } else {
+          tasksNeedingFollowupFetch.push(task);
+        }
+      });
+
+      const fetchedEntries = await Promise.all(
+        tasksNeedingFollowupFetch.map(async (task) => {
+          const taskId = getTaskId(task);
+          if (!taskId) return null;
+
+          try {
+            const response = await axios.get(`${API_BASE}/tasks/${taskId}/followups`, {
+              headers: getAuthHeaders(),
+            });
+            const todayRows = extractList(response.data).filter((item) =>
+              isTodayFollowupDate(getFollowupDate(item))
+            );
+            if (!todayRows.length) return null;
+            const firstTodayRow = todayRows.sort(
+              (a, b) => parseFollowupTimeValue(getFollowupTime(a)) - parseFollowupTimeValue(getFollowupTime(b))
+            )[0];
+            return {
+              task,
+              followup: firstTodayRow,
+              timeSort: parseFollowupTimeValue(getFollowupTime(firstTodayRow)),
+            };
+          } catch (error) {
+            console.error("Failed to load task followups", error);
+            return { error: true };
+          }
+        })
+      );
+
+      if (cancelled) return;
+
+      const failed = fetchedEntries.some((entry) => entry?.error);
+      const uniqueEntries = new Map();
+      [...entries, ...fetchedEntries.filter((entry) => entry && !entry.error)].forEach((entry) => {
+        const taskId = getTaskId(entry.task);
+        if (taskId == null) return;
+        const existing = uniqueEntries.get(String(taskId));
+        if (!existing || entry.timeSort < existing.timeSort) {
+          uniqueEntries.set(String(taskId), entry);
+        }
+      });
+
+      setTodayFollowupEntries(
+        Array.from(uniqueEntries.values()).sort((a, b) => a.timeSort - b.timeSort)
+      );
+      setFollowupLoadError(
+        failed
+          ? "Today Follow-up needs followup_date and followup_time from the task list or the existing follow-up API."
+          : ""
+      );
+    };
+
+    loadTodayFollowups();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tasks]);
 
   useEffect(() => {
     return () => {
@@ -570,6 +748,7 @@ export default function Tasks() {
     { key: "in_progress", label: "In Progress", value: summary.in_progress, icon: "fa-spinner" },
     { key: "completed", label: "Completed", value: summary.completed, icon: "fa-circle-check" },
     { key: "overdue", label: "Overdue", value: summary.overdue, icon: "fa-triangle-exclamation" },
+    { key: "today_followup", label: "Today Follow-up", value: summary.today_followup, icon: "fa-calendar-check" },
   ];
 
   return (
@@ -617,6 +796,9 @@ export default function Tasks() {
           </section>
 
           {noteStatus && <p className="note-status">{noteStatus}</p>}
+          {followupLoadError && activeFilter === "today_followup" && (
+            <p className="followup-status">{followupLoadError}</p>
+          )}
           <section className="tasks-list">
             {filteredTasks.length === 0 ? (
               <div className="empty-state">
@@ -1060,6 +1242,15 @@ export default function Tasks() {
           font-size: 12px;
           color: #047857;
           background: #d1fae5;
+          border-radius: 10px;
+          padding: 8px 12px;
+        }
+
+        .followup-status {
+          margin: 0 16px 12px;
+          font-size: 12px;
+          color: #92400e;
+          background: #fef3c7;
           border-radius: 10px;
           padding: 8px 12px;
         }
