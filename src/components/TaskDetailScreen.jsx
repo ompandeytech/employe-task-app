@@ -46,6 +46,32 @@ const formatDate = (value) => {
   });
 };
 
+const formatFollowupDate = (item) => {
+  const rawDate = item?.followup_date ?? item?.followupDate ?? item?.date;
+  const rawTime = item?.followup_time ?? item?.followupTime;
+  const dateText = formatDate(rawDate);
+  const timeText = formatFollowupTime(rawTime || extractTimeFromDateTime(rawDate));
+
+  return timeText === "-" ? dateText : `${dateText}, ${timeText}`;
+};
+
+const extractTimeFromDateTime = (value) => {
+  const match = normalizeDateText(value).match(/[T ](\d{2}:\d{2})(?::\d{2})?/);
+  return match?.[1] || "";
+};
+
+const formatFollowupTime = (value) => {
+  const match = normalizeDateText(value).match(/^(\d{2}):(\d{2})(?::\d{2})?$/);
+  if (!match) return "-";
+
+  const hour = Number(match[1]);
+  const suffix = hour >= 12 ? "PM" : "AM";
+  const displayHour = hour % 12 || 12;
+  return `${String(displayHour).padStart(2, "0")}:${match[2]} ${suffix}`;
+};
+
+const normalizeDateText = (value) => String(value || "").trim();
+
 const parseStoredUser = () => {
   try {
     return JSON.parse(localStorage.getItem("user") || "{}");
@@ -133,6 +159,7 @@ export default function TaskDetailScreen({ task, onClose, onAction, onRefreshTas
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [followupDate, setFollowupDate] = useState("");
+  const [followupTime, setFollowupTime] = useState("");
   const [followupRemark, setFollowupRemark] = useState("");
   const [savingFollowup, setSavingFollowup] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -192,8 +219,8 @@ export default function TaskDetailScreen({ task, onClose, onAction, onRefreshTas
   }, [task, followups, attachments, notes]);
 
   const handleAddFollowup = async () => {
-    if (!followupDate || !followupRemark.trim()) {
-      setMessage("Select a followup date and enter a remark.");
+    if (!followupDate || !followupTime || !followupRemark.trim()) {
+      setMessage("Select a followup date, time and enter a remark.");
       return;
     }
 
@@ -201,6 +228,7 @@ export default function TaskDetailScreen({ task, onClose, onAction, onRefreshTas
     setMessage("");
     const payload = {
       followup_date: followupDate,
+      followup_time: followupTime,
       remark: followupRemark.trim(),
       employee_id: user.id,
       created_by: user.name,
@@ -210,9 +238,10 @@ export default function TaskDetailScreen({ task, onClose, onAction, onRefreshTas
       const response = await axios.post(`${API_BASE}/tasks/${taskId}/followups`, payload, {
         headers: getAuthHeaders(),
       });
-      const created = normalizeFollowup(response.data || payload, user);
+      const created = normalizeFollowup({ ...payload, ...(response.data || {}) }, user);
       setFollowups((current) => [created, ...current]);
       setFollowupDate("");
+      setFollowupTime("");
       setFollowupRemark("");
       setMessage("Followup added successfully.");
       onRefreshTask?.();
@@ -227,6 +256,7 @@ export default function TaskDetailScreen({ task, onClose, onAction, onRefreshTas
       appendLocalRow(LOCAL_FOLLOWUPS_KEY, taskId, localRow);
       setFollowups((current) => [localRow, ...current]);
       setFollowupDate("");
+      setFollowupTime("");
       setFollowupRemark("");
       setMessage("Followup saved locally and will remain visible while offline.");
     } finally {
@@ -355,6 +385,14 @@ if (uploadedFiles.length) {
                   />
                 </label>
                 <label>
+                  Followup Time
+                  <input
+                    type="time"
+                    value={followupTime}
+                    onChange={(event) => setFollowupTime(event.target.value)}
+                  />
+                </label>
+                <label>
                   Remark
                   <textarea
                     value={followupRemark}
@@ -375,7 +413,7 @@ if (uploadedFiles.length) {
                   id:
   item.id ??
   `${item.followup_date}-${item.followup_note || item.remark}`,
-                  title: formatDate(item.followup_date ?? item.followupDate ?? item.date),
+                  title: formatFollowupDate(item),
                   subtitle:
   item.remark ||
   item.followup_note ||
