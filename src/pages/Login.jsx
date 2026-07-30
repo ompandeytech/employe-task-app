@@ -367,7 +367,7 @@ export default function Login({ onSuccess }) {
                 ref={pinInputRef}
                 className="login-pin-hidden-input"
                 type="password"
-                inputMode="numeric"
+                inputMode="none"
                 autoCapitalize="none"
                 autoCorrect="off"
                 autoComplete="one-time-code"
