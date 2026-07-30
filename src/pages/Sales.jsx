@@ -143,9 +143,49 @@ const getModeSubmitLabel = (mode, editId) => {
 const createDefaultItems = () => DEFAULT_ITEMS.map(() => createEmptyItem());
 
 const normalizeAwb = (value) => String(value || "").trim();
-const normalizeSaleType = (value) =>
-  String(value || "SINGLE").trim().toUpperCase() === "COMBO" ? "COMBO" : "SINGLE";
-const formatSaleType = (value) => (normalizeSaleType(value) === "COMBO" ? "Combo" : "Single");
+
+const SALE_TYPE_LABELS = {
+  SINGLE: "Single",
+  MULTIPLE: "Multiple",
+  COMBO: "Combo",
+};
+
+const normalizeSaleType = (value) => {
+  const type = String(value || "SINGLE").trim().toUpperCase();
+  return SALE_TYPE_LABELS[type] ? type : "SINGLE";
+};
+
+const formatSaleType = (value) => SALE_TYPE_LABELS[normalizeSaleType(value)] || "Single";
+
+const getCompactPageNumbers = (currentPage, pageCount) => {
+  if (pageCount <= 8) {
+    return Array.from({ length: pageCount }, (_, index) => index + 1);
+  }
+
+  const firstPages = [1, 2, 3, 4, 5];
+  const lastPages = [pageCount - 2, pageCount - 1, pageCount].filter((page) => page > 5);
+  const pages = [...firstPages];
+  const normalizedCurrentPage = Math.min(Math.max(Number(currentPage) || 1, 1), pageCount);
+
+  if (normalizedCurrentPage > 6) {
+    pages.push("gap-left");
+  }
+
+  if (normalizedCurrentPage > 5 && normalizedCurrentPage < pageCount - 2) {
+    pages.push(normalizedCurrentPage);
+  }
+
+  if (normalizedCurrentPage < pageCount - 3) {
+    pages.push("gap-right");
+  }
+
+  for (const page of lastPages) {
+    if (!pages.includes(page)) pages.push(page);
+  }
+
+  return pages;
+};
+
 const getDateKey = (value) => String(value || "").slice(0, 10);
 const formatHistoryDate = (value) => {
   const dateKey = getDateKey(value);
@@ -271,7 +311,65 @@ const getSingleHistoryItemLabel = (sale) => {
     uniqueItems.push(item);
   }
 
-  return uniqueItems[0] || "-";
+  const isComboSale = normalizeSaleType(sale?.sale_type || sale?.saleType) === "COMBO";
+  const label = isComboSale ? uniqueItems.join(", ") : uniqueItems[0] || "-";
+  const qty = Number(sale?.total_qty || sale?.quantity || 0);
+
+  if (!isComboSale && qty > 1 && !/\(\d+(?:\.\d+)?\)\s*$/.test(label)) {
+    return `${label} (${qty})`;
+  }
+
+  return label;
+};
+
+const buildSavedSaleRow = ({
+  form,
+  items,
+  inventory,
+  packType,
+  awb,
+  response,
+  totalAmount,
+}) => {
+  const itemLabels = items
+    .map((item) => {
+      const product = inventory.find(
+        (inventoryItem) => String(inventoryItem.id) === String(item.inventory_id)
+      );
+      const productName = product?.name || `Product #${item.inventory_id}`;
+      return `${productName} (${Number(item.quantity || 0)})`;
+    })
+    .join(", ");
+  const packagingMaterials = [
+    ...new Set(items.map((item) => String(item.packaging_material || "").trim()).filter(Boolean)),
+  ];
+  const packagingCost = items.reduce(
+    (sum, item) => sum + Number(item.quantity || 0) * Number(item.packaging_cost || 0),
+    0
+  );
+
+  return {
+    id: response?.data?.sale_id || `local-${Date.now()}`,
+    sales_awb_id: response?.data?.sale_id || `local-awb-${Date.now()}`,
+    platform: form.platform || "DIRECT",
+    account_name: form.account_name || "",
+    customer_name: form.account_name || form.customer_name || "Direct Sale",
+    invoice_no: form.invoice_no || "",
+    awb_no: awb || "",
+    awbNumber: awb || "",
+    sale_date: form.sale_date,
+    sale_type: packType,
+    saleType: packType,
+    items: itemLabels,
+    _itemLabel: itemLabels || "-",
+    total_qty: items.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
+    packaging_material: packagingMaterials.join(", "),
+    packaging_cost: packagingCost,
+    amount: Number(response?.data?.amount || totalAmount || 0),
+    status: "Packed",
+    tracking_status: "Packed",
+    _status: "Packed",
+  };
 };
 
 const buildRowsFromAwbs = (baseItem, awbs) => {
@@ -283,6 +381,17 @@ const buildRowsFromAwbs = (baseItem, awbs) => {
         ...baseItem,
         awbs: [],
         quantity: "",
+      },
+    ];
+  }
+
+  if (normalizedAwbs.length === 1) {
+    const manualQuantity = Number(baseItem?.quantity || 0);
+    return [
+      {
+        ...baseItem,
+        awbs: [normalizedAwbs[0]],
+        quantity: String(Number.isFinite(manualQuantity) && manualQuantity > 0 ? manualQuantity : 1),
       },
     ];
   }
@@ -299,12 +408,16 @@ const flattenItemsForSave = (items) => {
 
   for (const item of Array.isArray(items) ? items : []) {
     const normalizedAwbs = normalizeAwbList(item?.awbs);
+    const manualQuantity = Number(item?.quantity || 0);
 
     if (normalizedAwbs.length <= 1) {
       nextRows.push({
         ...item,
         awbs: normalizedAwbs,
-        quantity: normalizedAwbs.length === 1 ? "1" : item.quantity,
+        quantity:
+          normalizedAwbs.length === 1
+            ? String(Number.isFinite(manualQuantity) && manualQuantity > 0 ? manualQuantity : 1)
+            : item.quantity,
       });
       continue;
     }
@@ -670,16 +783,16 @@ export default function Sales() {
 
   const itemsSubTotal = items.reduce((sum, item) => {
     const quantity =
-      packType === "COMBO" && String(item.inventory_id || "").trim()
-        ? 1
+      ["COMBO", "MULTIPLE"].includes(packType) && String(item.inventory_id || "").trim()
+        ? Number(item.quantity || 1)
         : Number(item.quantity || 0);
     const price = Number(item.selling_price || 0);
     return sum + quantity * price;
   }, 0);
   const packagingTotal = items.reduce((sum, item) => {
     const quantity =
-      packType === "COMBO" && String(item.inventory_id || "").trim()
-        ? 1
+      ["COMBO", "MULTIPLE"].includes(packType) && String(item.inventory_id || "").trim()
+        ? Number(item.quantity || 1)
         : Number(item.quantity || 0);
     const packagingCost = Number(item.packaging_cost || 0);
     return sum + quantity * packagingCost;
@@ -689,22 +802,28 @@ export default function Sales() {
   const discountAmount = Number(form.discount_amount || 0) || 0;
   const totalAmount = Math.max(0, itemsTotal - discountAmount);
 
-  const handlePackSubmit = async () => {
+  const buildCurrentPackPayload = () => {
     const syncedItems = syncPackagingAcrossProductRows(items);
-    const sharedComboAwb = normalizeAwb(form.awb_no);
+    const sharedPackAwb = normalizeAwb(form.awb_no);
     const rowsForSave =
       packType === "COMBO"
         ? syncedItems.map((item) => ({
             ...item,
-            quantity: "1",
-            awbs: sharedComboAwb ? [sharedComboAwb] : [],
+            quantity: Number(item.quantity || 0) > 0 ? String(item.quantity) : "1",
+            awbs: sharedPackAwb ? [sharedPackAwb] : [],
+          }))
+        : packType === "MULTIPLE"
+        ? syncedItems.map((item) => ({
+            ...item,
+            quantity: Number(item.quantity || 0) > 0 ? String(item.quantity) : "1",
+            awbs: sharedPackAwb ? [sharedPackAwb] : [],
           }))
         : flattenItemsForSave(syncedItems);
 
     const cleanItems = rowsForSave
       .map((item) => ({
         inventory_id: Number(item.inventory_id || 0),
-        quantity: normalizeAwbList(item.awbs).length || Number(item.quantity || 0),
+        quantity: Number(item.quantity || 0),
         selling_price: Number(item.selling_price || 0),
         packaging_material: String(item.packaging_material || "").trim(),
         packaging_cost: Number(item.packaging_cost || 0),
@@ -722,21 +841,43 @@ export default function Sales() {
     }
     if (cleanItems.length === 0) {
       alert("Add at least 1 item");
-      return;
+      return null;
     }
     if (packType === "COMBO") {
-      if (!sharedComboAwb) {
+      if (!sharedPackAwb) {
         alert("Combo ke liye shared AWB number required hai");
-        return;
+        return null;
       }
-      if (cleanItems.length < 2) {
-        alert("Combo ke liye kam se kam 2 products add karein");
-        return;
+      const comboTotalQty = cleanItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+      if (cleanItems.length < 2 && comboTotalQty < 2) {
+        alert("Combo ke liye kam se kam 2 products ya 2 quantity add karein");
+        return null;
       }
-    }
-    if (editId) {
-      alert("Edit sale feature abhi enabled nahi hai");
-      return;
+    } else if (packType === "MULTIPLE") {
+      if (cleanItems.length !== 1) {
+        alert("Multiple mode me sirf 1 product row add karein");
+        return null;
+      }
+      if (!sharedPackAwb) {
+        alert("Multiple mode ke liye shared AWB number required hai");
+        return null;
+      }
+      if (cleanItems[0].quantity < 2) {
+        alert("Multiple mode ke liye quantity 2 ya usse zyada honi chahiye");
+        return null;
+      }
+      if (cleanItems[0].awbs.length !== 1) {
+        alert("Multiple mode me 1 quantity group ke liye sirf 1 AWB scan karein");
+        return null;
+      }
+    } else {
+      const invalidSingleItem = cleanItems.find(
+        (item) => item.awbs.length > 0 && Number(item.quantity || 0) !== item.awbs.length
+      );
+      if (invalidSingleItem) {
+        alert("Single mode me quantity AWB count ke barabar honi chahiye");
+        return null;
+      }
     }
 
     const totalAwbs = cleanItems.reduce((sum, item) => sum + item.awbs.length, 0);
@@ -744,10 +885,46 @@ export default function Sales() {
       form.awb_no.trim() || cleanItems.find((item) => item.awbs.length > 0)?.awbs?.[0] || "";
     const uniqueAwbs = new Set(cleanItems.flatMap((item) => item.awbs));
 
-    if (packType !== "COMBO" && uniqueAwbs.size !== totalAwbs) {
+    if (!["COMBO", "MULTIPLE"].includes(packType) && uniqueAwbs.size !== totalAwbs) {
       alert("Duplicate AWB found across selected products");
+      return null;
+    }
+
+    return {
+      platform: form.platform,
+      platform_order_id: form.platform_order_id || null,
+      customer_name: form.account_name || form.customer_name || "Direct Sale",
+      invoice_no: form.invoice_no || null,
+      awb_no: primaryAwb,
+      sale_date: form.sale_date,
+      payment_mode: form.payment_mode || "CASH",
+      discount_amount: 0,
+      tax_amount: 0,
+      account_name: form.account_name || null,
+      items: cleanItems,
+      products: cleanItems,
+      mode: "PACK",
+      pack_type: packType,
+      sale_type: packType,
+      status: "Packed",
+      totalAwbs,
+      primaryAwb,
+    };
+  };
+
+  const handlePackSubmit = async () => {
+    const packPayload = buildCurrentPackPayload();
+    if (!packPayload) return;
+    if (editId) {
+      alert("Edit sale feature abhi enabled nahi hai");
       return;
     }
+
+    const { cleanItems, totalAwbs, primaryAwb } = {
+      cleanItems: packPayload.items,
+      totalAwbs: packPayload.totalAwbs,
+      primaryAwb: packPayload.primaryAwb,
+    };
 
     try {
       let lastResponse = null;
@@ -766,53 +943,52 @@ export default function Sales() {
       }
 
       if (packType === "COMBO") {
+        lastResponse = await axios.post(SALES_API, packPayload);
+      } else if (packType === "MULTIPLE") {
         lastResponse = await axios.post(SALES_API, {
-          platform: form.platform,
-          platform_order_id: form.platform_order_id || null,
-          customer_name: form.account_name || form.customer_name || "Direct Sale",
-          invoice_no: form.invoice_no || null,
-          awb_no: primaryAwb,
-          sale_date: form.sale_date,
-          payment_mode: form.payment_mode || "CASH",
-          discount_amount: 0,
-          tax_amount: 0,
-          account_name: form.account_name || null,
-          items: cleanItems,
-          products: cleanItems,
-          mode: "PACK",
-          pack_type: "COMBO",
-          status: "Packed",
+          ...packPayload,
+          awb_no: cleanItems[0].awbs?.[0] || primaryAwb,
         });
       } else {
         for (const item of cleanItems) {
           lastResponse = await axios.post(SALES_API, {
-            platform: form.platform,
-            platform_order_id: form.platform_order_id || null,
-            customer_name: form.account_name || form.customer_name || "Direct Sale",
-            invoice_no: form.invoice_no || null,
+            ...packPayload,
             awb_no: item.awbs?.[0] || primaryAwb,
-            sale_date: form.sale_date,
-            payment_mode: form.payment_mode || "CASH",
-            discount_amount: 0,
-            tax_amount: 0,
-            account_name: form.account_name || null,
             items: [item],
             products: [item],
-            mode: "PACK",
             pack_type: "SINGLE",
-            status: "Packed",
+            sale_type: "SINGLE",
           });
         }
       }
 
+      const savedSaleRow = buildSavedSaleRow({
+        form,
+        items: cleanItems,
+        inventory,
+        packType,
+        awb: primaryAwb,
+        response: lastResponse,
+        totalAmount,
+      });
+
       writeSalesPackagingCache(packagingByAwb);
       resetSalesForm();
-      await Promise.all([fetchSales(), fetchInventory(), fetchPackagingEntries()]);
+      setSales((prevSales) => {
+        const savedAwb = normalizeAwb(savedSaleRow.awb_no || savedSaleRow.awbNumber);
+        const withoutSameAwb = (Array.isArray(prevSales) ? prevSales : []).filter(
+          (sale) => normalizeAwb(sale.awb_no || sale.awbNumber || sale.awb) !== savedAwb
+        );
+        return [savedSaleRow, ...withoutSameAwb];
+      });
+      await Promise.all([fetchInventory(), fetchPackagingEntries()]);
       alert(
         lastResponse?.data?.message ||
           (totalAwbs > 0
             ? packType === "COMBO"
               ? `Combo sale saved with ${cleanItems.length} products on AWB ${primaryAwb}`
+              : packType === "MULTIPLE"
+              ? `Multiple sale saved with qty ${cleanItems[0]?.quantity || 0} on AWB ${primaryAwb}`
               : `${totalAwbs} AWB row-wise sales saved successfully`
             : "Sale saved successfully")
       );
@@ -823,16 +999,39 @@ export default function Sales() {
     }
   };
 
+  const handleDraftSubmit = async () => {
+    const packPayload = buildCurrentPackPayload();
+    if (!packPayload) return;
+
+    try {
+      await axios.post(`${SALES_API}/drafts`, packPayload);
+      resetSalesForm();
+      alert("Sales draft saved successfully");
+    } catch (error) {
+      const errorMsg = error.response?.data?.message || error.message || "Unknown error";
+      console.error("Error saving sales draft:", error);
+      alert(`Failed to save draft: ${errorMsg}`);
+    }
+  };
+
   const handleSaleTypeChange = (nextSaleType) => {
     const normalizedType = normalizeSaleType(nextSaleType);
     setPackType(normalizedType);
     setForm((prev) => ({ ...prev, awb_no: "" }));
+    if (normalizedType === "COMBO" || normalizedType === "MULTIPLE") {
+      setItems((prev) =>
+        prev.map((item) => ({
+          ...item,
+          quantity: Number(item.quantity || 0) > 0 ? item.quantity : "1",
+        }))
+      );
+    }
   };
 
-  const handleComboAwbScan = async () => {
+  const handleSharedAwbScan = async () => {
     const awb = normalizeAwb(form.awb_no);
     if (!awb) {
-      alert("Combo AWB scan / enter karein");
+      alert(`${formatSaleType(packType)} AWB scan / enter karein`);
       return;
     }
 
@@ -844,10 +1043,10 @@ export default function Sales() {
       });
 
       setForm((prev) => ({ ...prev, awb_no: awb }));
-      alert(response.data?.message || "Combo AWB ready hai. Ab products add karein.");
+      alert(response.data?.message || `${formatSaleType(packType)} AWB ready hai. Ab products add karein.`);
     } catch (error) {
       const errorMsg =
-        error.response?.data?.message || error.message || "Combo AWB validate nahi ho paya";
+        error.response?.data?.message || error.message || `${formatSaleType(packType)} AWB validate nahi ho paya`;
       alert(errorMsg);
     }
   };
@@ -987,6 +1186,10 @@ export default function Sales() {
       alert("Combo mode me AWB top field me enter karein. Ye AWB sab products par apply hoga.");
       return;
     }
+    if (packType === "MULTIPLE") {
+      alert("Multiple mode me AWB top field me enter karein. Ye AWB quantity group ke liye hai.");
+      return;
+    }
 
     const currentItem = items[index];
     if (!String(currentItem?.inventory_id || "").trim()) {
@@ -1005,16 +1208,24 @@ export default function Sales() {
     }
 
     const normalizedAwbs = normalizeAwbList(awbs);
+    if (packType === "MULTIPLE" && normalizedAwbs.length > 1) {
+      alert("Multiple mode me quantity group ke liye sirf 1 AWB scan karein");
+      return;
+    }
     setItems((prev) => {
       const next = [...prev];
       const currentItem = next[activeAwbItemIndex];
       if (!currentItem) return prev;
 
+      const currentQuantity = Number(currentItem.quantity || 0);
       const itemTemplate = {
         ...currentItem,
-        quantity: "",
+        quantity: Number.isFinite(currentQuantity) && currentQuantity > 0 ? String(currentQuantity) : "1",
       };
-      const replacementRows = buildRowsFromAwbs(itemTemplate, normalizedAwbs);
+      const replacementRows =
+        packType === "MULTIPLE"
+          ? [{ ...itemTemplate, awbs: normalizedAwbs }]
+          : buildRowsFromAwbs(itemTemplate, normalizedAwbs);
 
       return [
         ...next.slice(0, activeAwbItemIndex),
@@ -1494,7 +1705,7 @@ export default function Sales() {
   return (
     <div className="page-container">
       <div className="purchase-top-bar">
-        <h2>Sales Management (Vyapar Style)</h2>
+        <h2></h2>
         <div className="sales-header-actions">
           <button
             type="button"
