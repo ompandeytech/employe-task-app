@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import client from "../api/client";
 import rtoAPI from "../api/rtoAPI";
 import Papa from "papaparse";
-import { ClipboardList } from "lucide-react";
+import { ClipboardList, Send, X } from "lucide-react";
 import { logEmployeeActivity } from "../utils/activityLogger";
 import "./Manufacture.css";
 
@@ -19,6 +19,7 @@ const STATUS_META = {
   repacked: "Repacked",
   qa_check: "QA Check",
   ready_for_storage: "Ready for Storage",
+  total_loss: "Total Loss",
 };
 
 const DAMAGE_META = {
@@ -41,6 +42,7 @@ const statusColor = (status) => {
     repacked: "#2563eb",
     qa_check: "#6366f1",
     ready_for_storage: "#6b7280",
+    total_loss: "#dc2626",
   };
   return map[status] || "#6b7280";
 };
@@ -61,6 +63,7 @@ const DEFAULT_FILTERS = {
   fromDate: "",
   toDate: "",
   damage: "all",
+  status: "all",
 };
 const MANUFACTURE_SEARCH_STORAGE_KEY = "manufacture_search_suggestions";
 const MANUFACTURE_HISTORY_STORAGE_KEY = "manufacture_status_update_history";
@@ -208,6 +211,12 @@ export default function Manufacture() {
   const [statusHistory, setStatusHistory] = useState(loadManufactureHistory);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareLoading, setShareLoading] = useState(false);
+  const [showFilterDrawer, setShowFilterDrawer] = useState(false);
+  const [expandedCardId, setExpandedCardId] = useState(null);
+  const [showAddBatchMobile, setShowAddBatchMobile] = useState(false);
+  const [addBatchTab, setAddBatchTab] = useState("manual");
   const [manualItem, setManualItem] = useState({
     product: "",
     qty: 1,
@@ -313,6 +322,7 @@ export default function Manufacture() {
 
     return items.filter((item) => {
       if (filters.damage !== "all" && (item.damage_status || "none") !== filters.damage) return false;
+      if (filters.status !== "all" && item.status !== filters.status) return false;
 
       if (fromDate && new Date(item.updatedAt) < new Date(fromDate)) return false;
       if (toDate && new Date(item.updatedAt) > new Date(`${toDate}T23:59:59`)) return false;
@@ -379,6 +389,14 @@ export default function Manufacture() {
 
           alert("Bulk upload successful");
           Promise.all([fetchItems(), fetchStatusHistory()]);
+          try {
+            logEmployeeActivity("manufacture_csv_upload", {
+              user: currentUserName,
+              source: "manufacture",
+            });
+          } catch (logError) {
+            console.error("Activity logging failed:", logError);
+          }
         } catch (error) {
           alert("Bulk upload failed");
           console.error(error);
@@ -438,6 +456,17 @@ export default function Manufacture() {
       await Promise.all([fetchItems(), fetchStatusHistory()]);
       resetManualItem();
       alert("Returned batch added successfully");
+      try {
+        logEmployeeActivity("manufacture_manual_add", {
+          user: currentUserName,
+          orderId: generatedOrderId,
+          product: manualItem.product.trim(),
+          qty,
+          source: "manufacture",
+        });
+      } catch (logError) {
+        console.error("Activity logging failed:", logError);
+      }
     } catch (error) {
       console.error("Error creating manual manufacture item:", error);
       alert("Failed to add returned batch");
@@ -480,6 +509,18 @@ export default function Manufacture() {
       fromStatus: previousStatus,
       toStatus: status,
     });
+    try {
+      logEmployeeActivity("manufacture_status_update", {
+        user: currentUserName,
+        orderId: currentItem.orderid,
+        product: currentItem.product,
+        qty: currentItem.qty,
+        status,
+        source: "manufacture",
+      });
+    } catch (logError) {
+      console.error("Activity logging failed:", logError);
+    }
   };
 
   const toggleSelected = (id) => {
@@ -592,6 +633,16 @@ export default function Manufacture() {
       await Promise.all([fetchItems(), fetchStatusHistory()]);
       const totalMoved = trackedChanges.reduce((sum, change) => sum + Number(change.movedQty || 0), 0);
       alert(`Moved ${totalMoved} qty to ${STATUS_META[bulkStatus]}.`);
+      try {
+        logEmployeeActivity("manufacture_bulk_move", {
+          user: currentUserName,
+          selectedCount: selectedIds.length,
+          status: bulkStatus,
+          source: "manufacture",
+        });
+      } catch (logError) {
+        console.error("Activity logging failed:", logError);
+      }
     } catch (err) {
       console.error("Bulk status update failed:", err);
       alert("Bulk move failed. Restoring latest data.");
@@ -651,6 +702,15 @@ export default function Manufacture() {
       setLastBulkMove(null);
       await Promise.all([fetchItems(), fetchStatusHistory()]);
       alert("Last bulk move restored.");
+      try {
+        logEmployeeActivity("manufacture_restore", {
+          user: currentUserName,
+          selectedCount: lastBulkMove.changes.length,
+          source: "manufacture",
+        });
+      } catch (logError) {
+        console.error("Activity logging failed:", logError);
+      }
     } catch (err) {
       console.error("Bulk restore failed:", err);
       alert("Restore failed. Refreshing latest data.");
@@ -663,13 +723,116 @@ export default function Manufacture() {
   const updateNotes = (id, notes) => {
     updateField(id, { notes }, () =>
       setItems((prev) => prev.map((item) => (item.id === id ? { ...item, notes } : item)))
-    );
+    ).then((success) => {
+      if (success) {
+        const item = items.find((i) => i.id === id);
+        try {
+          logEmployeeActivity("manufacture_notes_update", {
+            user: currentUserName,
+            orderId: item?.orderid,
+            product: item?.product,
+            source: "manufacture",
+          });
+        } catch (logError) {
+          console.error("Activity logging failed:", logError);
+        }
+      }
+    });
   };
 
   const updateDamageStatus = (id, damage_status) => {
     updateField(id, { damage_status }, () =>
       setItems((prev) => prev.map((item) => (item.id === id ? { ...item, damage_status } : item)))
-    );
+    ).then((success) => {
+      if (success) {
+        const item = items.find((i) => i.id === id);
+        try {
+          logEmployeeActivity("manufacture_damage_update", {
+            user: currentUserName,
+            orderId: item?.orderid,
+            product: item?.product,
+            damage: damage_status,
+            source: "manufacture",
+          });
+        } catch (logError) {
+          console.error("Activity logging failed:", logError);
+        }
+      }
+    });
+  };
+
+  const handleShareSelected = async () => {
+    if (selectedIds.length === 0) {
+      alert("Please select at least one batch to share.");
+      return;
+    }
+
+    const selectedItems = items.filter((item) => selectedIds.includes(item.id));
+    const shareText = selectedItems
+      .map(
+        (item) =>
+          `Order: ${item.orderid || "-"} | Product: ${item.product || "-"} | Qty: ${item.qty || 0} | Status: ${
+            STATUS_META[item.status] || item.status
+          } | Damage: ${DAMAGE_META[item.damage_status || "none"]}`
+      )
+      .join("\n");
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: "Manufacture Batches",
+          text: shareText,
+        });
+        return;
+      } catch (err) {
+        if (err.name !== "AbortError") {
+          console.error("Share failed:", err);
+        }
+      }
+    }
+
+    try {
+      await navigator.clipboard.writeText(shareText);
+      alert("Batch details copied to clipboard");
+    } catch (err) {
+      console.error("Clipboard write failed:", err);
+      setShowShareModal(true);
+    }
+  };
+
+  const handleShareToInventory = async () => {
+    if (selectedIds.length === 0) {
+      setShowShareModal(false);
+      return;
+    }
+
+    try {
+      setShareLoading(true);
+      const response = await client.post(`${API_BASE}/share/inventory`, {
+        itemIds: selectedIds,
+        updated_by: getCurrentUserName(),
+      });
+      const movedCount = Number(response?.data?.movedCount || selectedIds.length);
+      setSelectedIds([]);
+      setMoveQuantities({});
+      setShowShareModal(false);
+      await Promise.all([fetchItems(), fetchStatusHistory()]);
+      alert(`Sent ${movedCount} item(s) to inventory.`);
+      try {
+        logEmployeeActivity("manufacture_share", {
+          user: currentUserName,
+          selectedCount: selectedIds.length,
+          source: "manufacture",
+        });
+      } catch (logError) {
+        console.error("Activity logging failed:", logError);
+      }
+    } catch (error) {
+      console.error("Share to inventory failed:", error);
+      alert("Failed to send selected items to inventory.");
+    } finally {
+      setShareLoading(false);
+    }
   };
 
   const handleAcceptTransfer = async (transferId) => {
@@ -678,6 +841,14 @@ export default function Manufacture() {
       await rtoAPI.acceptTransfer(transferId, "manufacture");
       alert("Successfully moved to Manufacture table");
       await Promise.all([fetchPendingTransfers(), fetchItems(), fetchStatusHistory()]);
+      try {
+        logEmployeeActivity("manufacture_rto_accept", {
+          user: currentUserName,
+          source: "manufacture",
+        });
+      } catch (logError) {
+        console.error("Activity logging failed:", logError);
+      }
     } catch (error) {
       console.error("Accept transfer failed:", error);
       alert("Failed to accept transfer");
@@ -692,6 +863,14 @@ export default function Manufacture() {
       await rtoAPI.rejectTransfer(transferId, "manufacture");
       alert("Canceled");
       await fetchPendingTransfers();
+      try {
+        logEmployeeActivity("manufacture_rto_reject", {
+          user: currentUserName,
+          source: "manufacture",
+        });
+      } catch (logError) {
+        console.error("Activity logging failed:", logError);
+      }
     } catch (error) {
       console.error("Reject transfer failed:", error);
       alert("Failed to reject transfer");
@@ -707,6 +886,15 @@ export default function Manufacture() {
       const result = await rtoAPI.acceptAllTransfers("manufacture");
       alert(result?.message || "All transfers accepted");
       await Promise.all([fetchPendingTransfers(), fetchItems(), fetchStatusHistory()]);
+      try {
+        logEmployeeActivity("manufacture_rto_accept_all", {
+          user: currentUserName,
+          selectedCount: pendingTransfers.length,
+          source: "manufacture",
+        });
+      } catch (logError) {
+        console.error("Activity logging failed:", logError);
+      }
     } catch (error) {
       console.error("Accept all failed:", error);
       alert("Failed to accept all transfers");
@@ -716,7 +904,7 @@ export default function Manufacture() {
   };
 
   const summaryCards = useMemo(
-    () => [{ key: "total_units", label: "Total Units", qty: metrics.totalQty }, ...metrics.statusCards],
+    () => [{ key: "all", label: "Total Units", qty: metrics.totalQty }, ...metrics.statusCards],
     [metrics]
   );
 
@@ -731,36 +919,39 @@ export default function Manufacture() {
   return (
     <div className="manufacturing-container page-container">
       <div className="page-head">
-        <h2>Manufacture</h2>
-        <div className="manufacture-top-actions">
-          <button className="btn outline" onClick={handleGoToDashboard}>
+        <div className="manufacture-header-content">
+          <h1>Manufacture</h1>
+          <p className="manufacture-header-subtitle">Manage returned batches, track status movements, and process inventory transfers</p>
+        </div>
+        <div className="manufacture-header-toolbar">
+          <button className="btn manufacture-header-btn" onClick={handleGoToDashboard}>
             Dashboard
           </button>
-          <button className="btn primary" onClick={() => setShowHistoryModal(true)}>
+          <button className="btn manufacture-header-btn" onClick={() => setShowHistoryModal(true)}>
             History
           </button>
-          <div className="transfer-banner">
-            <button className="btn primary" onClick={() => setShowTransferModal(true)}>
-              Accept RTO Transfers ({pendingTransfers.length})
-            </button>
-          </div>
-          <div className="controls">
-            <button className="btn outline" onClick={fetchItems} disabled={loading}>
-              {loading ? "Loading..." : "Refresh"}
-            </button>
-          </div>
+          <button className="btn primary manufacture-header-btn" onClick={() => setShowTransferModal(true)}>
+            Accept RTO Transfers ({pendingTransfers.length})
+          </button>
+          <button className="btn manufacture-header-btn" onClick={fetchItems} disabled={loading}>
+            {loading ? "Loading..." : "Refresh"}
+          </button>
         </div>
       </div>
 
       <div className="manufacture-summary-row">
         {summaryCards.map((card) => (
-          <div
+          <button
+            type="button"
             key={card.key}
-            className={`manufacture-summary-card ${card.key === "total_units" ? "is-total" : ""}`}
+            className={`manufacture-summary-card ${card.key === "all" ? "is-total" : ""} ${
+              filters.status === card.key ? "is-active" : ""
+            }`}
+            onClick={() => updateFilter("status", card.key)}
           >
             <div className="manufacture-summary-label">{card.label}</div>
             <div className="manufacture-summary-value">{card.qty}</div>
-          </div>
+          </button>
         ))}
       </div>
 
@@ -779,6 +970,12 @@ export default function Manufacture() {
               <option key={term} value={term} />
             ))}
           </datalist>
+          <button className="btn outline filter-trigger" onClick={() => setShowFilterDrawer(true)}>
+            Filters
+            {(filters.damage !== "all" || filters.status !== "all" || filters.fromDate || filters.toDate) && (
+              <span className="filter-badge">•</span>
+            )}
+          </button>
           <select
             className="filter-input"
             value={filters.damage}
@@ -786,6 +983,18 @@ export default function Manufacture() {
           >
             <option value="all">All Damage Levels</option>
             {Object.entries(DAMAGE_META).map(([key, value]) => (
+              <option key={key} value={key}>
+                {value}
+              </option>
+            ))}
+          </select>
+          <select
+            className="filter-input"
+            value={filters.status}
+            onChange={(e) => updateFilter("status", e.target.value)}
+          >
+            <option value="all">All Statuses</option>
+            {Object.entries(STATUS_META).map(([key, value]) => (
               <option key={key} value={key}>
                 {value}
               </option>
@@ -809,25 +1018,85 @@ export default function Manufacture() {
         </div>
       </div>
 
-      <div className="manufacture-bulk-card">
-        <div className="manufacture-bulk-head">
-          <div>
-            <span>Product Move</span>
-            <strong>{selectedIds.length} selected</strong>
-          </div>
-          {selectedBulkItem && (
-            <div className="manufacture-selected-status">
-              <span>Current Status</span>
-              <strong style={{ background: statusColor(selectedBulkItem.status) }}>
-                {STATUS_META[selectedBulkItem.status] || selectedBulkItem.status || "-"}
-              </strong>
+      {showFilterDrawer && (
+        <>
+          <div className="filter-drawer-overlay" onClick={() => setShowFilterDrawer(false)} />
+          <div className="filter-drawer">
+            <div className="filter-drawer-header">
+              <h3>Filters</h3>
+              <button className="btn outline filter-close-btn" onClick={() => setShowFilterDrawer(false)}>
+                Close
+              </button>
             </div>
-          )}
-        </div>
+            <div className="filter-drawer-body">
+              <div className="filter-section">
+                <div className="filter-section-title">Damage Level</div>
+                <div className="filter-grid">
+                  <select
+                    className="filter-input"
+                    value={filters.damage}
+                    onChange={(e) => updateFilter("damage", e.target.value)}
+                  >
+                    <option value="all">All Damage Levels</option>
+                    {Object.entries(DAMAGE_META).map(([key, value]) => (
+                      <option key={key} value={key}>
+                        {value}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="filter-section">
+                <div className="filter-section-title">Status</div>
+                <div className="filter-grid">
+                  <select
+                    className="filter-input"
+                    value={filters.status}
+                    onChange={(e) => updateFilter("status", e.target.value)}
+                  >
+                    <option value="all">All Statuses</option>
+                    {Object.entries(STATUS_META).map(([key, value]) => (
+                      <option key={key} value={key}>
+                        {value}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="filter-section">
+                <div className="filter-section-title">Date Range</div>
+                <div className="filter-grid two-col">
+                  <input
+                    type="date"
+                    className="filter-input"
+                    value={filters.fromDate}
+                    onChange={(e) => updateFilter("fromDate", e.target.value)}
+                  />
+                  <input
+                    type="date"
+                    className="filter-input"
+                    value={filters.toDate}
+                    onChange={(e) => updateFilter("toDate", e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="filter-drawer-footer">
+              <button className="btn outline" onClick={clearAllFilters}>
+                Clear
+              </button>
+              <button className="btn primary" onClick={() => setShowFilterDrawer(false)}>
+                Apply
+              </button>
+            </div>
+          </div>
+        </>
+      )}
 
+      <div className="manufacture-bulk-card">
         <div className="manufacture-bulk-grid">
-          <div className="manufacture-product-picker">
-            <span>Product</span>
+          <div className="manufacture-bulk-column">
+            <label className="manufacture-bulk-label">Product</label>
             <SearchableSelect
               options={filtered}
               value={selectedBulkItem?.id || ""}
@@ -837,58 +1106,74 @@ export default function Manufacture() {
               }
               getOptionValue={(item) => String(item.id)}
               placeholder="Select product to move"
+              className="manufacture-bulk-select"
             />
+            {selectedIds.length > 0 && (
+              <div className="manufacture-quantity-box">
+                <label className="manufacture-bulk-label">Move Quantity</label>
+                <div className="manufacture-quantity-list">
+                  {selectedIds.map((id) => {
+                    const item = items.find((row) => row.id === id);
+                    if (!item) return null;
+                    return (
+                      <label key={id} className="manufacture-quantity-field">
+                        <strong>{item.orderid || item.product}</strong>
+                        <div className="manufacture-qty-control">
+                          <input
+                            type="number"
+                            min="1"
+                            max={Number(item.qty || 1)}
+                            value={moveQuantities[id] ?? Number(item.qty || 1)}
+                            onChange={(e) => updateMoveQuantity(id, e.target.value)}
+                          />
+                          <small>Total {item.qty}</small>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
-          {selectedIds.length > 0 && (
-            <div className="manufacture-quantity-box">
-              <span>Move Quantity</span>
-              <div className="manufacture-quantity-list">
-                {selectedIds.map((id) => {
-                  const item = items.find((row) => row.id === id);
-                  if (!item) return null;
-                  return (
-                    <label key={id} className="manufacture-quantity-field">
-                      <strong>{item.orderid || item.product}</strong>
-                      <div className="manufacture-qty-control">
-                        <input
-                          type="number"
-                          min="1"
-                          max={Number(item.qty || 1)}
-                          value={moveQuantities[id] ?? Number(item.qty || 1)}
-                          onChange={(e) => updateMoveQuantity(id, e.target.value)}
-                        />
-                        <small>Total {item.qty}</small>
-                      </div>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          <div className="manufacture-move-target">
-            <span>Move To</span>
+          <div className="manufacture-bulk-column">
+            <label className="manufacture-bulk-label">Move To</label>
             <select
-              className="filter-input manufacture-bulk-select"
+              className="manufacture-bulk-select"
               value={bulkStatus}
               onChange={(e) => setBulkStatus(e.target.value)}
               disabled={bulkMoving}
             >
               {Object.entries(STATUS_META).map(([key, value]) => (
                 <option key={key} value={key}>
-                  Move to {value}
+                  {value}
                 </option>
               ))}
             </select>
+            {selectedBulkItem && (
+              <div className="manufacture-current-status">
+                <label className="manufacture-bulk-label">Current Status</label>
+                <div className="manufacture-status-badge" style={{ background: statusColor(selectedBulkItem.status) }}>
+                  {STATUS_META[selectedBulkItem.status] || selectedBulkItem.status || "-"}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="manufacture-bulk-column">
+            <label className="manufacture-bulk-label">Selected Items</label>
+            <div className="manufacture-selected-card">
+              <div className="manufacture-selected-count">{selectedIds.length}</div>
+              <div className="manufacture-selected-label">items selected</div>
+            </div>
           </div>
         </div>
 
         <div className="manufacture-bulk-actions">
-          <button className="btn primary" onClick={handleBulkMove} disabled={bulkMoving || selectedIds.length === 0}>
+          <button className="btn manufacture-bulk-btn" onClick={handleBulkMove} disabled={bulkMoving || selectedIds.length === 0}>
             {bulkMoving ? "Moving..." : "Move Selected"}
           </button>
-          <button className="btn outline" onClick={handleRestoreBulkMove} disabled={bulkMoving || !lastBulkMove}>
+          <button className="btn manufacture-bulk-btn" onClick={handleRestoreBulkMove} disabled={bulkMoving || !lastBulkMove}>
             Restore
           </button>
         </div>
@@ -964,7 +1249,107 @@ export default function Manufacture() {
         </div>
       </div>
 
+      <div className="manufacture-add-batch-mobile">
+        <button
+          className="manufacture-add-batch-mobile-toggle"
+          onClick={() => setShowAddBatchMobile(!showAddBatchMobile)}
+        >
+          <ClipboardList size={18} />
+          {showAddBatchMobile ? "▼" : "▶"} Upload Returned Batch
+        </button>
+        {showAddBatchMobile && (
+          <div className="manufacture-add-batch-mobile-content">
+            <div className="manufacture-add-batch-tabs">
+              <button
+                className={`manufacture-add-batch-tab ${addBatchTab === "manual" ? "is-active" : ""}`}
+                onClick={() => setAddBatchTab("manual")}
+              >
+                Manual
+              </button>
+              <button
+                className={`manufacture-add-batch-tab ${addBatchTab === "csv" ? "is-active" : ""}`}
+                onClick={() => setAddBatchTab("csv")}
+              >
+                CSV Upload
+              </button>
+            </div>
+            {addBatchTab === "manual" && (
+              <div className="manufacture-add-batch-manual">
+                <div className="manual-entry-grid">
+                  <input
+                    placeholder="Product Name"
+                    value={manualItem.product}
+                    onChange={(e) => setManualItem((prev) => ({ ...prev, product: e.target.value }))}
+                    disabled={creating}
+                  />
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="Quantity"
+                    value={manualItem.qty}
+                    onChange={(e) => setManualItem((prev) => ({ ...prev, qty: e.target.value }))}
+                    disabled={creating}
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="Base Price Per Unit (Rs.)"
+                    value={manualItem.base_price}
+                    onChange={(e) => setManualItem((prev) => ({ ...prev, base_price: e.target.value }))}
+                    disabled={creating}
+                  />
+                  <input
+                    type="date"
+                    value={manualItem.date}
+                    onChange={(e) => setManualItem((prev) => ({ ...prev, date: e.target.value }))}
+                    disabled={creating}
+                  />
+                  <input
+                    className="manual-entry-notes"
+                    placeholder="Notes"
+                    value={manualItem.notes}
+                    onChange={(e) => setManualItem((prev) => ({ ...prev, notes: e.target.value }))}
+                    disabled={creating}
+                  />
+                  <div className="manual-entry-total">
+                    Total Value: Rs.{formatInr((Number(manualItem.qty) || 0) * (Number(manualItem.base_price) || 0))}
+                  </div>
+                </div>
+                <div className="manual-entry-actions">
+                  <button className="btn primary" onClick={createManualItem} disabled={creating}>
+                    {creating ? "Adding..." : "Add Batch"}
+                  </button>
+                  <button className="btn outline" onClick={resetManualItem} disabled={creating}>
+                    Reset
+                  </button>
+                </div>
+              </div>
+            )}
+            {addBatchTab === "csv" && (
+              <div className="manufacture-add-batch-csv">
+                <div className="upload-only-field">
+                  <input type="file" accept=".csv" onChange={(e) => handleBulkUpload(e.target.files[0])} />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       <div className="table-card">
+        <div className="manufacture-table-head">
+          <div>
+            <h3>Returned Batch Table</h3>
+            <p>Update damage level, workflow status, and notes from one clean structured table.</p>
+          </div>
+          <div className="manufacture-table-actions">
+            <span>{selectedIds.length} of {filtered.length} selected</span>
+            <button className="btn primary" onClick={handleShareSelected} disabled={shareLoading}>
+              <Send size={16} />
+              Share
+            </button>
+          </div>
+        </div>
         <table className="manufacturing-table">
           <thead>
             <tr>
@@ -1073,7 +1458,154 @@ export default function Manufacture() {
             )}
           </tbody>
         </table>
+
+        <div className="manufacture-mobile-cards">
+          {loading ? (
+            <div className="manufacture-mobile-loading">Loading...</div>
+          ) : filtered.length === 0 ? (
+            <div className="manufacture-mobile-empty">No batches found</div>
+          ) : (
+            filtered.map((item) => (
+              <div key={item.id} className="manufacture-mobile-card">
+                <div className="manufacture-mobile-card-header">
+                  <label className="manufacture-mobile-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(item.id)}
+                      onChange={() => toggleSelected(item.id)}
+                    />
+                  </label>
+                  <div className="manufacture-mobile-card-info">
+                    <div className="manufacture-mobile-order">{item.orderid || "-"}</div>
+                    <div className="manufacture-mobile-product">{item.product || "-"}</div>
+                  </div>
+                  <button
+                    className="manufacture-mobile-expand-btn"
+                    onClick={() => setExpandedCardId(expandedCardId === item.id ? null : item.id)}
+                  >
+                    {expandedCardId === item.id ? "▼" : "▶"}
+                  </button>
+                </div>
+                <div className="manufacture-mobile-card-body">
+                  <div className="manufacture-mobile-meta">
+                    <span className="manufacture-mobile-qty">Qty: {item.qty || 0}</span>
+                    <div
+                      className="manufacture-mobile-status-pill"
+                      style={{ background: statusColor(item.status), color: "#fff" }}
+                    >
+                      {STATUS_META[item.status] || item.status}
+                    </div>
+                    <div
+                      className="manufacture-mobile-damage-pill"
+                      style={{ background: damageColor(item.damage_status || "none"), color: "#111827" }}
+                    >
+                      {DAMAGE_META[item.damage_status || "none"]}
+                    </div>
+                  </div>
+                  <div className="manufacture-mobile-updated">
+                    {item.updatedAt ? new Date(item.updatedAt).toLocaleString("en-IN") : "-"}
+                  </div>
+                </div>
+                {expandedCardId === item.id && (
+                  <div className="manufacture-mobile-card-expanded">
+                    <div className="manufacture-mobile-detail-row">
+                      <span>Base Price:</span>
+                      <strong>Rs.{formatInr(item.base_price || 0)}</strong>
+                    </div>
+                    <div className="manufacture-mobile-detail-row">
+                      <span>Repair Cost:</span>
+                      <strong>Rs.{formatInr(item.extra_cost || 0)}</strong>
+                    </div>
+                    <div className="manufacture-mobile-detail-row">
+                      <span>Total:</span>
+                      <strong>Rs.{formatInr(item.final_price || 0)}</strong>
+                    </div>
+                    <div className="manufacture-mobile-detail-row">
+                      <span>Notes:</span>
+                      <input
+                        value={item.notes || ""}
+                        onBlur={(e) => updateNotes(item.id, e.target.value)}
+                        onChange={(e) =>
+                          setItems((prev) =>
+                            prev.map((row) => (row.id === item.id ? { ...row, notes: e.target.value } : row))
+                          )
+                        }
+                        placeholder="Notes"
+                      />
+                    </div>
+                    <div className="manufacture-mobile-detail-row">
+                      <span>Status:</span>
+                      <select value={item.status} onChange={(e) => updateStatus(item.id, e.target.value)}>
+                        {Object.entries(STATUS_META).map(([key, value]) => (
+                          <option key={key} value={key}>
+                            {value}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="manufacture-mobile-detail-row">
+                      <span>Damage:</span>
+                      <select
+                        value={item.damage_status || "none"}
+                        onChange={(e) => updateDamageStatus(item.id, e.target.value)}
+                      >
+                        {Object.entries(DAMAGE_META).map(([key, value]) => (
+                          <option key={key} value={key}>
+                            {value}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+        </div>
       </div>
+
+      {selectedIds.length > 0 && (
+        <div className="manufacture-mobile-action-bar">
+          <div className="manufacture-mobile-action-count">
+            {selectedIds.length} selected
+          </div>
+          <div className="manufacture-mobile-action-controls">
+            <select
+              className="manufacture-mobile-action-select"
+              value={bulkStatus}
+              onChange={(e) => setBulkStatus(e.target.value)}
+              disabled={bulkMoving}
+            >
+              {Object.entries(STATUS_META).map(([key, value]) => (
+                <option key={key} value={key}>
+                  {value}
+                </option>
+              ))}
+            </select>
+            <button
+              className="btn primary manufacture-mobile-action-btn"
+              onClick={handleBulkMove}
+              disabled={bulkMoving}
+            >
+              Move
+            </button>
+            <button
+              className="btn outline manufacture-mobile-action-btn"
+              onClick={handleRestoreBulkMove}
+              disabled={bulkMoving || !lastBulkMove}
+            >
+              Restore
+            </button>
+            <button
+              className="btn outline manufacture-mobile-action-btn"
+              onClick={handleShareSelected}
+              disabled={shareLoading}
+            >
+              Share
+            </button>
+          </div>
+        </div>
+      )}
 
       {showHistoryModal && (
         <div className="modal-overlay">
@@ -1138,6 +1670,70 @@ export default function Manufacture() {
                   )}
                 </tbody>
               </table>
+
+              <div className="manufacture-history-mobile-cards">
+                {historyLoading ? (
+                  <div className="manufacture-mobile-loading">Loading...</div>
+                ) : statusHistory.length === 0 ? (
+                  <div className="manufacture-mobile-empty">No history found</div>
+                ) : (
+                  statusHistory.map((entry) => (
+                    <div key={entry.id} className="manufacture-history-mobile-card">
+                      <div className="manufacture-history-mobile-date">
+                        {entry.created_at || entry.at
+                          ? new Date(entry.created_at || entry.at).toLocaleString("en-IN")
+                          : "-"}
+                      </div>
+                      <div className="manufacture-history-mobile-user">{entry.updated_by || entry.user || "-"}</div>
+                      <div className="manufacture-history-mobile-action">{entry.action || "-"}</div>
+                      <div className="manufacture-history-mobile-details">
+                        <div className="manufacture-history-mobile-detail">
+                          <span>Order:</span>
+                          <strong>{entry.orderid || "-"}</strong>
+                        </div>
+                        <div className="manufacture-history-mobile-detail">
+                          <span>Product:</span>
+                          <strong>{entry.product || "-"}</strong>
+                        </div>
+                        <div className="manufacture-history-mobile-detail">
+                          <span>Qty:</span>
+                          <strong>{entry.qty || 0}</strong>
+                        </div>
+                        <div className="manufacture-history-mobile-detail">
+                          <span>From:</span>
+                          <strong>{STATUS_META[entry.from_status || entry.fromStatus] || entry.source_location || "-"}</strong>
+                        </div>
+                        <div className="manufacture-history-mobile-detail">
+                          <span>To:</span>
+                          <strong>{STATUS_META[entry.to_status || entry.toStatus] || entry.destination_location || "-"}</strong>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showShareModal && (
+        <div className="modal-overlay">
+          <div className="modal-card manufacture-share-modal">
+            <div className="modal-header">
+              <h3>Share {selectedIds.length} Selected Item(s)</h3>
+              <button className="btn-close" onClick={() => setShowShareModal(false)} disabled={shareLoading}>
+                <X size={18} />
+              </button>
+            </div>
+            <p className="manufacture-share-subtext">Choose where you want to send these selected products.</p>
+            <div className="manufacture-share-actions">
+              <button className="btn primary" onClick={handleShareToInventory} disabled={shareLoading}>
+                {shareLoading ? "Sharing..." : "Send to Inventory"}
+              </button>
+              <button className="btn outline" onClick={() => setShowShareModal(false)} disabled={shareLoading}>
+                Cancel
+              </button>
             </div>
           </div>
         </div>
@@ -1207,6 +1803,49 @@ export default function Manufacture() {
                   )}
                 </tbody>
               </table>
+
+              <div className="manufacture-transfer-mobile-cards">
+                {pendingTransfers.length === 0 ? (
+                  <div className="manufacture-mobile-empty">No pending transfers</div>
+                ) : (
+                  pendingTransfers.map((request) => (
+                    <div key={request.id} className="manufacture-transfer-mobile-card">
+                      <div className="manufacture-transfer-mobile-detail">
+                        <span>Order:</span>
+                        <strong>{request.orderId}</strong>
+                      </div>
+                      <div className="manufacture-transfer-mobile-detail">
+                        <span>Product:</span>
+                        <strong>{request?.payload?.productName || "-"}</strong>
+                      </div>
+                      <div className="manufacture-transfer-mobile-detail">
+                        <span>Qty:</span>
+                        <strong>{request?.payload?.qty || 1}</strong>
+                      </div>
+                      <div className="manufacture-transfer-mobile-detail">
+                        <span>Value:</span>
+                        <strong>Rs.{formatInr(request?.payload?.value || 0)}</strong>
+                      </div>
+                      <div className="manufacture-transfer-mobile-actions">
+                        <button
+                          className="btn primary"
+                          onClick={() => handleAcceptTransfer(request.id)}
+                          disabled={transferLoading}
+                        >
+                          Accept
+                        </button>
+                        <button
+                          className="btn outline"
+                          onClick={() => handleRejectTransfer(request.id)}
+                          disabled={transferLoading}
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           </div>
         </div>
