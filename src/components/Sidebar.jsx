@@ -94,6 +94,11 @@ useEffect(() => {
                 <span>Salary</span>
               </div>
 
+              <div className="menu-item" onClick={() => navigate("/help-desk")}>
+                <i className="fas fa-life-ring"></i>
+                <span>Help Desk</span>
+              </div>
+
               {hasAccess("sales") && (
                 <div className="menu-item" onClick={() => navigate("/sales")}>
                   <i className="fas fa-box"></i>

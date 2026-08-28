@@ -23,6 +23,7 @@ import PendingTasks from "./pages/PendingTasks";
 import ReassignedTasks from "./pages/ReassignedTasks";
 import TaskAssign from "./pages/TaskAssign";
 import TaskHistory from "./pages/TaskHistory";
+import HelpDesk from "./pages/HelpDesk";
 
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -257,6 +258,14 @@ function App() {
                 }
               />
               <Route
+                path="/help-desk"
+                element={
+                  <ProtectedRoute>
+                    <HelpDesk setOpenMenu={setOpenMenu} />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
                 path="/sales"
                 element={
                   <ProtectedRoute page="sales">
@@ -342,4 +351,3 @@ function App() {
 }
 
 export default App;
-

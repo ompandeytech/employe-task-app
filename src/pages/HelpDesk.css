@@ -1,0 +1,458 @@
+.helpdesk-page,
+.helpdesk-page * {
+  box-sizing: border-box;
+}
+
+.helpdesk-page {
+  min-height: 100vh;
+  background: #f7f9fc;
+  color: #0f172a;
+}
+
+.helpdesk-content {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 18px 16px calc(116px + env(safe-area-inset-bottom));
+}
+
+.helpdesk-hero,
+.helpdesk-panel {
+  border: 1px solid #e3eaf2;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow:
+    0 12px 32px rgba(15, 23, 42, 0.05),
+    0 1px 3px rgba(15, 23, 42, 0.03);
+}
+
+.helpdesk-hero {
+  display: grid;
+  gap: 18px;
+  padding: 20px;
+}
+
+.helpdesk-kicker {
+  display: inline-flex;
+  width: fit-content;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #f3eeff;
+  color: #7c3aed;
+  font-size: 0.73rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.helpdesk-hero h1,
+.helpdesk-panel h1 {
+  margin: 12px 0 8px;
+  color: #0f172a;
+  font-size: clamp(1.55rem, 4.8vw, 2rem);
+  font-weight: 700;
+}
+
+.helpdesk-hero p,
+.helpdesk-panel > p {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+
+.helpdesk-report-card,
+.helpdesk-issue-card,
+.helpdesk-back-btn,
+.helpdesk-submit-btn {
+  appearance: none;
+  -webkit-appearance: none;
+  font: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.helpdesk-report-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 16px;
+  border: 1px solid #e5ebf3;
+  border-radius: 20px;
+  background: #fbfcff;
+  color: #0f172a;
+  text-align: left;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+}
+
+.helpdesk-report-icon,
+.helpdesk-issue-icon,
+.helpdesk-attachment-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 16px;
+  background: #f3eeff;
+  color: #7c3aed;
+}
+
+.helpdesk-report-card strong,
+.helpdesk-report-card small {
+  display: block;
+}
+
+.helpdesk-report-card strong {
+  font-size: 0.98rem;
+  font-weight: 700;
+}
+
+.helpdesk-report-card small {
+  margin-top: 4px;
+  color: #64748b;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.helpdesk-section {
+  margin-top: 18px;
+}
+
+.helpdesk-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.helpdesk-section-head h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.helpdesk-section-head span {
+  color: #94a3b8;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.helpdesk-issue-list {
+  display: grid;
+  gap: 12px;
+}
+
+.helpdesk-issue-card {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px;
+  border: 1px solid #e5ebf3;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #0f172a;
+  text-align: left;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+}
+
+.helpdesk-issue-copy {
+  min-width: 0;
+}
+
+.helpdesk-issue-copy strong,
+.helpdesk-issue-copy small,
+.helpdesk-issue-copy em {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.helpdesk-issue-copy strong {
+  font-size: 0.94rem;
+  font-weight: 700;
+}
+
+.helpdesk-issue-copy small,
+.helpdesk-issue-copy em {
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 0.78rem;
+  font-style: normal;
+}
+
+.helpdesk-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 26px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.helpdesk-status--pending {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.helpdesk-status--in-progress {
+  background: #eef2ff;
+  color: #4f46e5;
+}
+
+.helpdesk-status--done {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.helpdesk-panel {
+  padding: 18px;
+}
+
+.helpdesk-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding: 8px 0;
+  border: 0;
+  background: transparent;
+  color: #4f46e5;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.helpdesk-form {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.helpdesk-form label {
+  display: grid;
+  gap: 8px;
+}
+
+.helpdesk-form label > span,
+.helpdesk-detail-card span,
+.helpdesk-meta-grid span {
+  color: #64748b;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.helpdesk-form input,
+.helpdesk-form select,
+.helpdesk-form textarea {
+  width: 100%;
+  border: 1px solid #dbe4ee;
+  border-radius: 16px;
+  background: #fbfcff;
+  color: #0f172a;
+  font: inherit;
+  font-size: 0.95rem;
+  outline: none;
+}
+
+.helpdesk-form input,
+.helpdesk-form select {
+  min-height: 48px;
+  padding: 0 14px;
+}
+
+.helpdesk-form textarea {
+  min-height: 118px;
+  padding: 13px 14px;
+  resize: vertical;
+}
+
+.helpdesk-form input:focus,
+.helpdesk-form select:focus,
+.helpdesk-form textarea:focus {
+  border-color: rgba(124, 58, 237, 0.55);
+  box-shadow: 0 0 0 4px rgba(124, 58, 237, 0.1);
+}
+
+.helpdesk-attachment {
+  position: relative;
+  display: flex !important;
+  grid-template-columns: none;
+  align-items: center;
+  gap: 12px !important;
+  padding: 14px;
+  border: 1px dashed #cfd9e4;
+  border-radius: 18px;
+  background: #fbfcff;
+}
+
+.helpdesk-attachment input {
+  position: absolute;
+  inset: 0;
+  min-height: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.helpdesk-attachment strong,
+.helpdesk-attachment small {
+  display: block;
+}
+
+.helpdesk-attachment strong {
+  color: #0f172a;
+  font-size: 0.9rem;
+}
+
+.helpdesk-attachment small {
+  margin-top: 3px;
+  color: #94a3b8;
+  font-size: 0.78rem;
+}
+
+.helpdesk-submit-btn {
+  min-height: 50px;
+  border: 0;
+  border-radius: 16px;
+  background: #4f46e5;
+  color: #ffffff;
+  font-size: 0.95rem;
+  font-weight: 700;
+  box-shadow: 0 12px 22px rgba(79, 70, 229, 0.22);
+}
+
+.helpdesk-detail-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.helpdesk-detail-head h1 {
+  margin-bottom: 6px;
+}
+
+.helpdesk-detail-head p {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+.helpdesk-detail-card,
+.helpdesk-meta-grid > div {
+  margin-top: 16px;
+  padding: 15px;
+  border: 1px solid #e5ebf3;
+  border-radius: 18px;
+  background: #fbfcff;
+}
+
+.helpdesk-detail-card p {
+  margin: 8px 0 0;
+  color: #1e293b;
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.helpdesk-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.helpdesk-meta-grid strong {
+  display: block;
+  margin-top: 8px;
+  color: #0f172a;
+  font-size: 0.92rem;
+}
+
+.helpdesk-file-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.helpdesk-file-card i {
+  color: #7c3aed;
+}
+
+.helpdesk-progress {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.helpdesk-progress-step {
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  color: #94a3b8;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.helpdesk-progress-step span {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: #e2e8f0;
+}
+
+.helpdesk-progress-step.active {
+  color: #4f46e5;
+}
+
+.helpdesk-progress-step.active span {
+  background: #4f46e5;
+}
+
+.helpdesk-done-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 12px;
+  border-radius: 16px;
+  background: #dcfce7;
+  color: #166534;
+  font-weight: 800;
+}
+
+@media (max-width: 479px) {
+  .helpdesk-content {
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+
+  .helpdesk-hero,
+  .helpdesk-panel {
+    border-radius: 22px;
+  }
+
+  .helpdesk-issue-card {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+
+  .helpdesk-issue-card .helpdesk-status {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
+
+@media (max-width: 359px) {
+  .helpdesk-meta-grid {
+    grid-template-columns: 1fr;
+  }
+}
