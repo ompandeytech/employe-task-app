@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import client from "../api/client";
 import NotificationBell from "../components/NotificationBell";
 import WorkspaceBottomNav from "../components/WorkspaceBottomNav";
 import "./HelpDesk.css";
@@ -11,38 +12,6 @@ const categories = [
   "Website/app issue",
   "Customer/order problem",
   "Other issue",
-];
-
-const initialIssues = [
-  {
-    id: 1,
-    title: "Payment status not updating",
-    category: "Payment issue",
-    description:
-      "Customer payment is completed, but the order still shows payment pending in the system.",
-    status: "In Progress",
-    submittedAt: "2026-08-27",
-    attachmentName: "",
-  },
-  {
-    id: 2,
-    title: "Wrong inventory count",
-    category: "Inventory issue",
-    description:
-      "Product stock appears different between the warehouse sheet and the app inventory screen.",
-    status: "Pending",
-    submittedAt: "2026-08-26",
-    attachmentName: "inventory-screen.png",
-  },
-  {
-    id: 3,
-    title: "Order label fixed",
-    category: "Order related issue",
-    description: "Shipping label was not opening for one order. It has been resolved.",
-    status: "Done",
-    submittedAt: "2026-08-24",
-    attachmentName: "",
-  },
 ];
 
 const emptyForm = {
@@ -64,11 +33,52 @@ const formatDate = (value) => {
 
 const getToday = () => new Date().toISOString().slice(0, 10);
 
+const normalizeStatus = (status) =>
+  ["Pending", "In Progress", "Done"].includes(status) ? status : "Pending";
+
+const mapHelpDeskIssue = (issue) => ({
+  id: issue.id,
+  title: issue.title || "",
+  category: issue.category || "Other issue",
+  description: issue.description || "",
+  status: normalizeStatus(issue.status),
+  submittedAt: issue.created_at || issue.submittedAt || getToday(),
+  attachmentName: issue.attachment_name || issue.attachmentName || "",
+  attachmentUrl: issue.attachment_url || issue.attachmentUrl || "",
+});
+
 export default function HelpDesk({ setOpenMenu }) {
   const [view, setView] = useState("home");
-  const [issues, setIssues] = useState(initialIssues);
+  const [issues, setIssues] = useState([]);
   const [selectedIssueId, setSelectedIssueId] = useState(null);
   const [form, setForm] = useState(emptyForm);
+  const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState("");
+  const [submitError, setSubmitError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const loadIssues = useCallback(async ({ showLoader = false } = {}) => {
+    if (showLoader) setLoading(true);
+    setFetchError("");
+
+    try {
+      const response = await client.get("/help-desk/my");
+      const payload = Array.isArray(response.data) ? response.data : [];
+      const nextIssues = payload.map(mapHelpDeskIssue);
+      setIssues(nextIssues);
+      return nextIssues;
+    } catch {
+      setIssues([]);
+      setFetchError("Unable to load your submitted issues. Please try again.");
+      return [];
+    } finally {
+      if (showLoader) setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadIssues({ showLoader: true });
+  }, [loadIssues]);
 
   const selectedIssue = useMemo(
     () => issues.find((issue) => issue.id === selectedIssueId),
@@ -80,24 +90,39 @@ export default function HelpDesk({ setOpenMenu }) {
     setView("details");
   };
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
-    if (!form.title.trim() || !form.description.trim()) return;
+    if (!form.title.trim() || !form.description.trim() || submitting) return;
 
-    const nextIssue = {
-      id: Date.now(),
-      title: form.title.trim(),
+    setSubmitting(true);
+    setSubmitError("");
+
+    const payload = {
       category: form.category,
+      title: form.title.trim(),
       description: form.description.trim(),
-      status: "Pending",
-      submittedAt: getToday(),
-      attachmentName: form.attachmentName,
     };
 
-    setIssues((currentIssues) => [nextIssue, ...currentIssues]);
-    setForm(emptyForm);
-    setSelectedIssueId(nextIssue.id);
-    setView("details");
+    if (form.attachmentName) {
+      payload.attachment_name = form.attachmentName;
+    }
+
+    try {
+      const response = await client.post("/help-desk", payload);
+      const nextIssues = await loadIssues();
+      const createdId = response.data?.issue?.id || response.data?.issueId || null;
+      const createdIssue =
+        nextIssues.find((issue) => String(issue.id) === String(createdId)) ||
+        nextIssues[0] ||
+        null;
+      setForm(emptyForm);
+      setSelectedIssueId(createdIssue?.id || null);
+      setView(createdIssue ? "details" : "home");
+    } catch {
+      setSubmitError("Unable to submit your issue. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleAttachment = (event) => {
@@ -162,7 +187,10 @@ export default function HelpDesk({ setOpenMenu }) {
                 </div>
 
                 <div className="helpdesk-issue-list">
-                  {issues.map((issue) => (
+                  {loading && <p>Loading issues...</p>}
+                  {!loading && fetchError && <p>{fetchError}</p>}
+                  {!loading && !fetchError && issues.length === 0 && <p>No submitted issues yet.</p>}
+                  {!loading && !fetchError && issues.map((issue) => (
                     <button
                       key={issue.id}
                       type="button"
@@ -197,6 +225,7 @@ export default function HelpDesk({ setOpenMenu }) {
               <p>Share the issue details so the team can review it.</p>
 
               <form className="helpdesk-form" onSubmit={handleSubmit}>
+                {submitError && <p>{submitError}</p>}
                 <label>
                   <span>Issue Category</span>
                   <select
@@ -259,8 +288,8 @@ export default function HelpDesk({ setOpenMenu }) {
                   </span>
                 </label>
 
-                <button type="submit" className="helpdesk-submit-btn">
-                  Submit Issue
+                <button type="submit" className="helpdesk-submit-btn" disabled={submitting}>
+                  {submitting ? "Submitting..." : "Submit Issue"}
                 </button>
               </form>
             </section>
