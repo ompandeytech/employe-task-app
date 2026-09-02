@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
+import { initPushNotifications, setupPushNotificationListeners } from "../utils/fcmService";
+import { registerDeviceToken as registerDeviceAPI } from "../api/deviceAPI";
 import "./Login.css";
 
 const API_BASE = "https://techiohisab.com/api";
@@ -18,6 +20,7 @@ export default function Login({ onSuccess }) {
   const [rememberMe, setRememberMe] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const pinInputRef = useRef(null);
+  const fcmInitializedRef = useRef(false);
 
   useEffect(() => {
     const storedQuickSession = localStorage.getItem("quickSessionToken");
@@ -87,6 +90,12 @@ export default function Login({ onSuccess }) {
       window.dispatchEvent(new Event("tasks:refresh"));
       onSuccess?.();
       navigate("/");
+
+      // Register device token after successful login (non-blocking)
+      if (!fcmInitializedRef.current) {
+        fcmInitializedRef.current = true;
+        registerDeviceToken(userForApp.id);
+      }
     } catch (err) {
       const status = err?.response?.status;
       const serverMessage =
@@ -148,6 +157,12 @@ export default function Login({ onSuccess }) {
       }
       onSuccess?.();
       navigate("/");
+
+      // Register device token after successful PIN login (non-blocking)
+      if (!fcmInitializedRef.current) {
+        fcmInitializedRef.current = true;
+        registerDeviceToken(data.user.id);
+      }
     } catch {
       alert("Invalid PIN");
     } finally {
@@ -161,6 +176,35 @@ export default function Login({ onSuccess }) {
 
   const updatePinValue = (nextValue) => {
     setPin(nextValue.replace(/\D/g, "").slice(0, 4));
+  };
+
+  const registerDeviceToken = async (userId) => {
+    try {
+      const token = await initPushNotifications();
+      if (token && userId) {
+        // Setup notification listeners
+        await setupPushNotificationListeners(
+          (notification) => {
+            console.log("Foreground notification:", notification);
+          },
+          (action) => {
+            console.log("Notification action:", action);
+          }
+        );
+
+        // Send token to backend using API client
+        try {
+          await registerDeviceAPI(userId, token, 'android');
+          console.log("Device token registered successfully");
+        } catch (apiError) {
+          console.warn("Failed to register device token with backend:", apiError);
+          // Don't fail login if device registration fails
+        }
+      }
+    } catch (error) {
+      console.warn("Push notification initialization failed:", error);
+      // Don't fail login if push notifications fail
+    }
   };
 
   const handlePinInputChange = (e) => {

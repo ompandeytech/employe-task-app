@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "133954422100",
+    "project_id": "techiohisab-video",
+    "storage_bucket": "techiohisab-video.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:133954422100:android:5c64cb3d90ad3a9f4e74c1",
+        "android_client_info": {
+          "package_name": "com.techio.employee"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCWAvXgaBlC5g2F99LK1K1iHwx89nu4aBs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
