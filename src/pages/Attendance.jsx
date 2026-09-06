@@ -324,7 +324,7 @@ useEffect(() => {
   }, [userId]);
 
   const loadEmployeeHistory = useCallback(
-    async ({ showLoading = true } = {}) => {
+    async ({ showLoading = true, showError = true } = {}) => {
       if (!userId) {
         console.warn("No userId available for attendance history");
         if (showLoading) {
@@ -349,11 +349,13 @@ useEffect(() => {
         return rows;
       } catch (err) {
         console.error("Failed to load attendance history:", err);
-        const message =
-          err?.code === "ECONNABORTED"
-            ? "Unable to load attendance. Check internet connection."
-            : err.response?.data?.error || err.message || "Unknown error";
-        setError(`Failed to load attendance history: ${message}`);
+        if (showError) {
+          const message =
+            err?.code === "ECONNABORTED"
+              ? "Unable to load attendance. Check internet connection."
+              : err.response?.data?.error || err.message || "Unknown error";
+          setError(`Failed to load attendance history: ${message}`);
+        }
         setHistory([]);
         return [];
       } finally {
@@ -497,7 +499,7 @@ useEffect(() => {
       });
       console.log("Attendance saved successfully:", response.data);
       await loadTodayAttendance();
-      await loadEmployeeHistory({ showLoading: false });
+      await loadEmployeeHistory({ showLoading: false, showError: false });
       setStatusMessage("Attendance record updated.");
       return response.data;
     } catch (err) {
@@ -667,7 +669,7 @@ useEffect(() => {
       });
       setStatusMessage("Lunch time recorded successfully.");
       await loadTodayAttendance();
-      await loadEmployeeHistory({ showLoading: false });
+      await loadEmployeeHistory({ showLoading: false, showError: false });
       return true;
     } catch (err) {
       console.error(`Failed to record ${lunchType}:`, err);
@@ -747,7 +749,7 @@ useEffect(() => {
           return [updatedAttendance, ...filtered];
         });
         await loadTodayAttendance();
-        await loadEmployeeHistory({ showLoading: false });
+        await loadEmployeeHistory({ showLoading: false, showError: false });
       }
       if (type === "lunch_in") {
         setLunchActive(true);
