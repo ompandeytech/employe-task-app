@@ -69,6 +69,10 @@ const emptyForm = {
   title: "",
   description: "",
   attachmentName: "",
+  attachmentFile: null,
+  selected_question_id: null,
+  selected_question_title: "",
+  guided_solution: "",
 };
 
 const formatDate = (value) => {
@@ -151,14 +155,50 @@ export default function HelpDesk({ setOpenMenu }) {
     setSubmitting(true);
     setSubmitError("");
 
+    let uploadAttachmentName = null;
+    let uploadAttachmentUrl = null;
+
+    try {
+      if (form.attachmentFile) {
+        const uploadFormData = new FormData();
+        uploadFormData.append("file", form.attachmentFile);
+
+        const uploadResponse = await client.post("/help-desk/upload", uploadFormData);
+
+        uploadAttachmentName = uploadResponse.data?.attachment_name || form.attachmentName;
+        uploadAttachmentUrl = uploadResponse.data?.attachment_url || null;
+
+        if (!uploadAttachmentUrl) {
+          throw new Error("Upload response missing attachment_url");
+        }
+      }
+    } catch {
+      setSubmitError("Photo upload failed. Please try again.");
+      setSubmitting(false);
+      return;
+    }
+
     const payload = {
       category: form.category,
       title: form.title.trim(),
       description: form.description.trim(),
     };
 
-    if (form.attachmentName) {
-      payload.attachment_name = form.attachmentName;
+    if (form.selected_question_id) {
+      payload.selected_question_id = form.selected_question_id;
+    }
+    if (form.selected_question_title) {
+      payload.selected_question_title = form.selected_question_title;
+    }
+    if (form.guided_solution) {
+      payload.guided_solution = form.guided_solution;
+    }
+
+    if (uploadAttachmentName) {
+      payload.attachment_name = uploadAttachmentName;
+    }
+    if (uploadAttachmentUrl) {
+      payload.attachment_url = uploadAttachmentUrl;
     }
 
     try {
@@ -179,6 +219,7 @@ export default function HelpDesk({ setOpenMenu }) {
     setForm((currentForm) => ({
       ...currentForm,
       attachmentName: file?.name || "",
+      attachmentFile: file || null,
     }));
   };
 
@@ -199,11 +240,20 @@ export default function HelpDesk({ setOpenMenu }) {
     setView("my-tickets");
   };
 
-  const goToRaiseTicket = (prefillCategory = null, prefillTitle = "") => {
+  const goToRaiseTicket = (
+    prefillCategory = null,
+    prefillTitle = "",
+    prefillQuestionId = null,
+    prefillQuestionTitle = "",
+    prefillGuidedSolution = ""
+  ) => {
     setForm({
       ...emptyForm,
       category: prefillCategory || categories[0],
       title: prefillTitle,
+      selected_question_id: prefillQuestionId,
+      selected_question_title: prefillQuestionTitle,
+      guided_solution: prefillGuidedSolution,
     });
     setView("report");
   };
@@ -224,7 +274,15 @@ export default function HelpDesk({ setOpenMenu }) {
 
   const handleStillNeedHelp = () => {
     if (selectedQuestion) {
-      goToRaiseTicket(selectedQuestion.category, selectedQuestion.title);
+      goToRaiseTicket(
+        selectedQuestion.category,
+        selectedQuestion.title,
+        selectedQuestion.id,
+        selectedQuestion.title,
+        Array.isArray(selectedQuestion.solution)
+          ? selectedQuestion.solution.join(" ")
+          : ""
+      );
     } else {
       goToRaiseTicket();
     }
@@ -709,7 +767,17 @@ export default function HelpDesk({ setOpenMenu }) {
                   <i className="fas fa-paperclip"></i>
                   <div>
                     <span>Attachment</span>
-                    <p>{selectedIssue.attachmentName}</p>
+                    {selectedIssue.attachmentUrl ? (
+                      <a
+                        href={selectedIssue.attachmentUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {selectedIssue.attachmentName}
+                      </a>
+                    ) : (
+                      <p>{selectedIssue.attachmentName}</p>
+                    )}
                   </div>
                 </div>
               )}
