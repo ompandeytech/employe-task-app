@@ -99,7 +99,23 @@ const mapHelpDeskIssue = (issue) => ({
   submittedAt: issue.created_at || issue.submittedAt || getToday(),
   attachmentName: issue.attachment_name || issue.attachmentName || "",
   attachmentUrl: issue.attachment_url || issue.attachmentUrl || "",
+  adminResponse: issue.admin_response || issue.adminResponse || "",
+  selectedQuestionId: issue.selected_question_id || issue.selectedQuestionId || null,
+  selectedQuestionTitle: issue.selected_question_title || issue.selectedQuestionTitle || "",
+  guidedSolution: issue.guided_solution || issue.guidedSolution || "",
 });
+
+const formatMessageTime = (value) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString("en-IN", {
+    day: "numeric",
+    month: "short",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+};
 
 export default function HelpDesk({ setOpenMenu }) {
   const [view, setView] = useState("home");
@@ -114,6 +130,12 @@ export default function HelpDesk({ setOpenMenu }) {
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [selectedQuestion, setSelectedQuestion] = useState(null);
   const [createdTicketId, setCreatedTicketId] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [messagesError, setMessagesError] = useState("");
+  const [replyText, setReplyText] = useState("");
+  const [replySending, setReplySending] = useState(false);
+  const [replyError, setReplyError] = useState("");
 
   const loadIssues = useCallback(async ({ showLoader = false } = {}) => {
     if (showLoader) setLoading(true);
@@ -143,9 +165,51 @@ export default function HelpDesk({ setOpenMenu }) {
     [issues, selectedIssueId]
   );
 
+  const loadMessages = useCallback(async (issueId) => {
+    if (!issueId) return;
+    setMessagesLoading(true);
+    setMessagesError("");
+
+    try {
+      const response = await client.get(`/help-desk/${issueId}/messages`);
+      const payload = Array.isArray(response.data) ? response.data : (response.data?.messages || []);
+      setMessages(payload);
+    } catch (error) {
+      console.error("Failed to load messages:", error);
+      setMessagesError("Unable to load conversation. Please try again.");
+      setMessages([]);
+    } finally {
+      setMessagesLoading(false);
+    }
+  }, []);
+
+  const sendMessage = async () => {
+    if (!replyText.trim() || !selectedIssueId || replySending) return;
+
+    setReplySending(true);
+    setReplyError("");
+
+    const payload = {
+      message: replyText.trim(),
+    };
+
+    try {
+      await client.post(`/help-desk/${selectedIssueId}/messages`, payload);
+      setReplyText("");
+      await loadMessages(selectedIssueId);
+      await loadIssues({ showLoader: false });
+    } catch (error) {
+      console.error("Failed to send message:", error);
+      setReplyError("Unable to send message. Please try again.");
+    } finally {
+      setReplySending(false);
+    }
+  };
+
   const openIssue = (issue) => {
     setSelectedIssueId(issue.id);
     setView("details");
+    loadMessages(issue.id);
   };
 
   const handleSubmit = async (event) => {
@@ -230,6 +294,10 @@ export default function HelpDesk({ setOpenMenu }) {
     setSelectedQuestion(null);
     setSearchQuery("");
     setCreatedTicketId(null);
+    setMessages([]);
+    setMessagesError("");
+    setReplyText("");
+    setReplyError("");
   };
 
   const goToCategories = () => {
@@ -751,6 +819,20 @@ export default function HelpDesk({ setOpenMenu }) {
                 <p>{selectedIssue.description}</p>
               </div>
 
+              {selectedIssue.selectedQuestionTitle && (
+                <div className="helpdesk-detail-card">
+                  <span>Selected Question</span>
+                  <p>{selectedIssue.selectedQuestionTitle}</p>
+                </div>
+              )}
+
+              {selectedIssue.guidedSolution && (
+                <div className="helpdesk-detail-card">
+                  <span>Guided Solution</span>
+                  <p>{selectedIssue.guidedSolution}</p>
+                </div>
+              )}
+
               <div className="helpdesk-meta-grid">
                 <div>
                   <span>Submitted on</span>
@@ -793,6 +875,76 @@ export default function HelpDesk({ setOpenMenu }) {
                   <p>Your issue has been resolved.</p>
                 )}
               </div>
+
+              {selectedIssue.adminResponse && selectedIssue.status === "Done" && (
+                <div className="helpdesk-resolution-card">
+                  <span className="helpdesk-resolution-label">
+                    <i className="fas fa-check-circle"></i>
+                    Resolution
+                  </span>
+                  <p>{selectedIssue.adminResponse}</p>
+                </div>
+              )}
+
+              <div className="helpdesk-conversation-section">
+                <h3>Conversation</h3>
+                {messagesLoading && <p className="helpdesk-loading-text">Loading conversation...</p>}
+                {messagesError && (
+                  <div className="helpdesk-error-state">
+                    <p>{messagesError}</p>
+                    <button type="button" onClick={() => loadMessages(selectedIssue.id)}>
+                      Retry
+                    </button>
+                  </div>
+                )}
+                {!messagesLoading && !messagesError && messages.length === 0 && (
+                  <p className="helpdesk-empty-conversation">Conversation will appear here.</p>
+                )}
+                {!messagesLoading && !messagesError && messages.length > 0 && (
+                  <div className="helpdesk-conversation-list">
+                    {messages.map((msg, index) => (
+                      <div
+                        key={index}
+                        className={`helpdesk-message helpdesk-message--${
+                          msg.sender_type === "admin" || msg.senderType === "admin" ? "admin" : "employee"
+                        }`}
+                      >
+                        <span className="helpdesk-message-sender">
+                          {msg.sender_type === "admin" || msg.senderType === "admin" ? "Support" : "You"}
+                        </span>
+                        <p className="helpdesk-message-text">{msg.message || msg.text || ""}</p>
+                        <span className="helpdesk-message-time">
+                          {formatMessageTime(msg.created_at || msg.createdAt || msg.timestamp)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {selectedIssue.status !== "Done" && (
+                <div className="helpdesk-reply-section">
+                  {replyError && <p className="helpdesk-reply-error">{replyError}</p>}
+                  <div className="helpdesk-reply-input-wrapper">
+                    <textarea
+                      className="helpdesk-reply-input"
+                      placeholder="Type your reply..."
+                      value={replyText}
+                      onChange={(e) => setReplyText(e.target.value)}
+                      rows="3"
+                      disabled={replySending}
+                    />
+                    <button
+                      type="button"
+                      className="helpdesk-reply-btn"
+                      onClick={sendMessage}
+                      disabled={!replyText.trim() || replySending}
+                    >
+                      {replySending ? "Sending..." : "Send"}
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <div className="helpdesk-progress" aria-label={`Issue status: ${selectedIssue.status}`}>
                 {["Pending", "In Progress", "Done"].map((status) => {
