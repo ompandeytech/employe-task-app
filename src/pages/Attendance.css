@@ -587,7 +587,7 @@
 }
 
 .tone.half {
-  background: #facc15;
+  background: #f97316;
 }
 
 .tone.off {
@@ -632,8 +632,8 @@
 }
 
 .calendar-day.half {
-  background: rgba(250, 204, 21, 0.22);
-  color: #a16207;
+  background: rgba(249, 115, 22, 0.18);
+  color: #c2410c;
 }
 
 .calendar-day.off {
@@ -719,8 +719,8 @@
 }
 
 .badge.half {
-  background: rgba(250, 204, 21, 0.22);
-  color: #a16207;
+  background: rgba(249, 115, 22, 0.18);
+  color: #c2410c;
 }
 
 .badge.off {

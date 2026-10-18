@@ -142,12 +142,30 @@ const formatWorkingDuration = (startValue, endValue) => {
   return `${hours}h ${String(minutes).padStart(2, "0")}m`;
 };
 
-const normalizeAttendanceTone = (status) => {
-  const value = String(status || "").toLowerCase();
-  if (value.includes("present")) return "present";
-  if (value.includes("absent")) return "absent";
-  if (value.includes("half")) return "half";
-  return "off";
+const getAttendanceClassification = (record) => {
+  const getTone = (value) => {
+    const normalized = String(value || "").trim().toLowerCase();
+    if (normalized.includes("half day")) return "half";
+    if (normalized.includes("full day") || normalized.includes("present")) return "present";
+    if (normalized.includes("absent")) return "absent";
+    if (
+      normalized === "off" ||
+      normalized.includes("weekly off") ||
+      normalized.includes("holiday")
+    ) {
+      return "off";
+    }
+    return null;
+  };
+
+  // day_type is the backend's final, post-checkout classification. Status is
+  // retained as the fallback for records that do not yet have a final type.
+  const finalDayType = String(record?.day_type || "").trim();
+  const finalTone = getTone(finalDayType);
+  if (finalTone) return { label: finalDayType, tone: finalTone };
+
+  const status = String(record?.status || "").trim();
+  return { label: status || "Pending", tone: getTone(status) || "off" };
 };
 
 const buildMonthlyCalendar = (rows, referenceDate) => {
@@ -164,7 +182,7 @@ const buildMonthlyCalendar = (rows, referenceDate) => {
     const entryDate = new Date(iso);
     if (Number.isNaN(entryDate.getTime())) return;
     if (entryDate.getFullYear() !== year || entryDate.getMonth() !== month) return;
-    activityMap.set(iso, normalizeAttendanceTone(item?.status));
+    activityMap.set(iso, getAttendanceClassification(item).tone);
   });
 
   const cells = [];
@@ -435,12 +453,15 @@ useEffect(() => {
   const hasCheckedOut = Boolean(todayAttendance?.out_time);
   const checkInDisabled = hasCheckedIn;
   const checkOutDisabled = !hasCheckedIn || hasCheckedOut;
-  const todayStatusTone = todayAttendance ? normalizeAttendanceTone(todayAttendance?.status) : "off";
+  const todayClassification = todayAttendance
+    ? getAttendanceClassification(todayAttendance)
+    : { label: "Ready", tone: "off" };
+  const todayStatusTone = todayClassification.tone;
   const heroStatusTone = todayStatusTone === "off" && hasCheckedIn ? "present" : todayStatusTone;
   const heroStatusLabel = (() => {
     if (preparingPunch || saving) return "Syncing";
-    if (todayStatusTone === "absent") return "On Leave";
-    if (hasCheckedOut) return "Checked Out";
+    if (hasCheckedOut) return todayClassification.label;
+    if (todayStatusTone === "absent") return todayClassification.label;
     if (hasCheckedIn) return "Checked In";
     return "Ready";
   })();
@@ -472,7 +493,7 @@ useEffect(() => {
       !Number.isNaN(date.getTime()) &&
       date.getFullYear() === time.getFullYear() &&
       date.getMonth() === time.getMonth() &&
-      normalizeAttendanceTone(item?.status) === "present"
+      getAttendanceClassification(item).tone === "present"
     );
   }).length;
   const monthlyAbsentCount = history.filter((item) => {
@@ -483,7 +504,18 @@ useEffect(() => {
       !Number.isNaN(date.getTime()) &&
       date.getFullYear() === time.getFullYear() &&
       date.getMonth() === time.getMonth() &&
-      normalizeAttendanceTone(item?.status) === "absent"
+      getAttendanceClassification(item).tone === "absent"
+    );
+  }).length;
+  const monthlyHalfDayCount = history.filter((item) => {
+    const iso = getRecordDateString(item?.date);
+    if (!iso) return false;
+    const date = new Date(iso);
+    return (
+      !Number.isNaN(date.getTime()) &&
+      date.getFullYear() === time.getFullYear() &&
+      date.getMonth() === time.getMonth() &&
+      getAttendanceClassification(item).tone === "half"
     );
   }).length;
 
@@ -748,9 +780,10 @@ useEffect(() => {
           );
           return [updatedAttendance, ...filtered];
         });
-        await loadTodayAttendance();
-        await loadEmployeeHistory({ showLoading: false, showError: false });
       }
+      // Re-read the API after every successful punch so its final checkout
+      // classification is reflected even if the punch response is partial.
+      await refreshAttendanceData();
       if (type === "lunch_in") {
         setLunchActive(true);
         setLunchStartTime(currentTime);
@@ -1124,6 +1157,10 @@ useEffect(() => {
                   <span>Absent</span>
                   <strong>{monthlyAbsentCount}</strong>
                 </div>
+                <div>
+                  <span>Half Day</span>
+                  <strong>{monthlyHalfDayCount}</strong>
+                </div>
               </div>
 
               <div className="calendar-legend">
@@ -1174,8 +1211,10 @@ useEffect(() => {
             <div className="history-list">
               {history.map((item) => {
                 const durationMinutes = getLunchDurationMinutes(item);
-                const itemTone = normalizeAttendanceTone(item?.status);
-                const itemStatusLabel = item?.status || "Pending";
+                const { label: itemStatusLabel, tone: itemTone } = getAttendanceClassification(item);
+                const hasRecordedTimes = Boolean(
+                  item?.in_time || item?.out_time || item?.lunch_in || item?.lunch_out
+                );
 
                 return (
                   <div className="history-card" key={item.id}>
@@ -1187,7 +1226,7 @@ useEffect(() => {
                       <span className={`badge ${itemTone}`}>{itemStatusLabel}</span>
                     </div>
 
-                    {itemTone === "present" ? (
+                    {hasRecordedTimes ? (
                       <>
                         <div className="history-timeline">
                           <div className="timeline-row">
