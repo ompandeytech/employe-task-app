@@ -13,6 +13,7 @@ import {
   MapPin,
   RotateCcw,
   ShieldCheck,
+  Star,
 } from "lucide-react";
 import axios from "axios";
 import { API_BASE, getAuthHeaders } from "../utils/apiConfig";
@@ -23,6 +24,25 @@ const getUser = () => JSON.parse(localStorage.getItem("user") || "{}");
 
 const getUserId = (user) =>
   user?.id ?? user?.user_id ?? user?.userId ?? user?.employee_id ?? user?.employeeId ?? null;
+
+const getDirectoryRows = (payload) => {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.users)) return payload.users;
+  if (Array.isArray(payload?.data)) return payload.data;
+  return [];
+};
+
+const getDirectoryEmployeeId = (employee) =>
+  employee?.id ?? employee?.user_id ?? employee?.userId ?? employee?.employee_id ?? employee?.employeeId ?? null;
+
+const getDirectoryEmployeeName = (employee) =>
+  employee?.name ??
+  employee?.employee_name ??
+  employee?.employeeName ??
+  employee?.fullName ??
+  employee?.full_name ??
+  employee?.username ??
+  "";
 
 const toDateString = (date) => date.toISOString().slice(0, 10);
 const getRecordDateString = (value) => {
@@ -243,12 +263,24 @@ export default function Attendance() {
   const [cameraLoading, setCameraLoading] = useState(false);
   const [savingOverlay, setSavingOverlay] = useState(false);
   const [punchHint, setPunchHint] = useState("");
+  const [teamRatingOpen, setTeamRatingOpen] = useState(false);
+  const [teamMembers, setTeamMembers] = useState([]);
+  const [teamMembersLoading, setTeamMembersLoading] = useState(false);
+  const [teamMembersError, setTeamMembersError] = useState("");
+  const [teamRatings, setTeamRatings] = useState({});
+  const [sharedTeamRating, setSharedTeamRating] = useState({ rating: 0, comment: "" });
+  const [isSharedTeamRating, setIsSharedTeamRating] = useState(false);
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
+  const [feedbackMessage, setFeedbackMessage] = useState("");
+  const [checkoutStarting, setCheckoutStarting] = useState(false);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const lunchTimerRef = useRef(null);
+  const checkoutStartingRef = useRef(false);
+  const selectAllRef = useRef(null);
   const modalRoot = typeof document !== "undefined" ? document.body : null;
 useEffect(() => {
-  if (savingOverlay) {
+  if (savingOverlay || teamRatingOpen) {
     document.body.style.overflow = "hidden";
     document.documentElement.style.overflow = "hidden";
   } else {
@@ -260,7 +292,55 @@ useEffect(() => {
     document.body.style.overflow = "";
     document.documentElement.style.overflow = "";
   };
-}, [savingOverlay]);
+}, [savingOverlay, teamRatingOpen]);
+
+  const allTeamMembersSelected =
+    teamMembers.length > 0 && teamMembers.every((member) => teamRatings[member.id]);
+
+  const selectedTeamFeedback = useMemo(
+    () =>
+      isSharedTeamRating
+        ? teamMembers.map((member) => ({
+            teammate_id: member.id,
+            // Kept for the existing attendance_feedback API contract, where
+            // employee_id means the teammate receiving the rating.
+            employee_id: member.id,
+            rating: sharedTeamRating.rating,
+            comment: sharedTeamRating.comment.trim(),
+          }))
+        : Object.entries(teamRatings).map(([teammateId, feedback]) => ({
+            teammate_id: Number(teammateId),
+            employee_id: Number(teammateId),
+            rating: feedback.rating,
+            comment: String(feedback.comment || "").trim(),
+          })),
+    [isSharedTeamRating, sharedTeamRating, teamMembers, teamRatings]
+  );
+  const hasSelectedTeamFeedback = selectedTeamFeedback.length > 0;
+  const hasValidTeamFeedbackRatings = selectedTeamFeedback.every(
+    (item) =>
+      Number.isInteger(Number(item.rating)) &&
+      Number(item.rating) >= 1 &&
+      Number(item.rating) <= 5
+  );
+  const canSubmitTeamFeedback =
+    !teamMembersLoading &&
+    !teamMembersError &&
+    !feedbackSubmitting &&
+    !checkoutStarting &&
+    hasSelectedTeamFeedback &&
+    hasValidTeamFeedbackRatings;
+  const feedbackReadinessMessage = !hasSelectedTeamFeedback
+    ? "Select at least one teammate to rate."
+    : !hasValidTeamFeedbackRatings
+    ? "Choose a rating from 1 to 5 for every selected teammate."
+    : "";
+
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = allTeamMembersSelected && !isSharedTeamRating;
+    }
+  }, [allTeamMembersSelected, isSharedTeamRating]);
 
   const handleBack = () => {
     if (window.history.length > 1) {
@@ -912,6 +992,171 @@ useEffect(() => {
     }
   };
 
+  const openTeamRating = async () => {
+    if (checkOutDisabled || saving || preparingPunch || checkoutStartingRef.current) return;
+
+    setTeamRatingOpen(true);
+    setTeamRatings({});
+    setSharedTeamRating({ rating: 0, comment: "" });
+    setIsSharedTeamRating(false);
+    setTeamMembers([]);
+    setTeamMembersError("");
+    setFeedbackMessage("");
+    setTeamMembersLoading(true);
+
+    try {
+      // /users is the authenticated directory already used by employee task reassignment.
+      const response = await axios.get(`${API_BASE}/users`, { headers: getAuthHeaders() });
+      const seen = new Set();
+      const members = getDirectoryRows(response.data)
+        .map((employee) => ({
+          id: getDirectoryEmployeeId(employee),
+          name: getDirectoryEmployeeName(employee),
+        }))
+        .filter((employee) => {
+          if (employee.id == null || !employee.name || String(employee.id) === String(userId)) return false;
+          const key = String(employee.id);
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .sort((a, b) => a.name.localeCompare(b.name));
+      setTeamMembers(members);
+    } catch (directoryError) {
+      console.error("Failed to load team members for rating:", directoryError);
+      setTeamMembersError("Unable to load your team. Please try again later.");
+    } finally {
+      setTeamMembersLoading(false);
+    }
+  };
+
+  const closeTeamRating = () => {
+    if (checkoutStarting || feedbackSubmitting) return;
+    setTeamRatingOpen(false);
+    setTeamRatings({});
+    setSharedTeamRating({ rating: 0, comment: "" });
+    setIsSharedTeamRating(false);
+  };
+
+  const toggleRatedEmployee = (employeeId) => {
+    if (isSharedTeamRating) {
+      setTeamRatings(
+        teamMembers.reduce((ratings, member) => {
+          if (String(member.id) !== String(employeeId)) {
+            ratings[member.id] = { ...sharedTeamRating };
+          }
+          return ratings;
+        }, {})
+      );
+      setIsSharedTeamRating(false);
+      return;
+    }
+
+    setTeamRatings((current) => {
+      const next = { ...current };
+      if (next[employeeId]) {
+        delete next[employeeId];
+      } else {
+        next[employeeId] = { rating: 0, comment: "" };
+      }
+      return next;
+    });
+  };
+
+  const toggleAllRatedEmployees = () => {
+    if (isSharedTeamRating) {
+      setTeamRatings({});
+      setSharedTeamRating({ rating: 0, comment: "" });
+      setIsSharedTeamRating(false);
+      return;
+    }
+    setTeamRatings((current) =>
+      teamMembers.reduce(
+        (next, member) => ({
+          ...next,
+          [member.id]: current[member.id] || { rating: 0, comment: "" },
+        }),
+        {}
+      )
+    );
+    setIsSharedTeamRating(true);
+  };
+
+  const updateTeamRating = (employeeId, field, value) => {
+    setTeamRatings((current) => ({
+      ...current,
+      [employeeId]: { ...current[employeeId], [field]: value },
+    }));
+  };
+
+  const updateSharedTeamRating = (field, value) => {
+    setSharedTeamRating((current) => ({ ...current, [field]: value }));
+  };
+
+  const continueCheckoutWithoutFeedback = () => {
+    if (checkoutStartingRef.current || saving || preparingPunch || feedbackSubmitting) return;
+    checkoutStartingRef.current = true;
+    setCheckoutStarting(true);
+    setTeamRatingOpen(false);
+    setTeamRatings({});
+    setSharedTeamRating({ rating: 0, comment: "" });
+    setIsSharedTeamRating(false);
+    void handleCheckPunch("checkout").finally(() => {
+      checkoutStartingRef.current = false;
+      setCheckoutStarting(false);
+    });
+  };
+
+  const submitTeamFeedback = async () => {
+    if (feedbackSubmitting || checkoutStartingRef.current || saving || preparingPunch) return;
+
+    const attendanceId = Number(todayAttendance?.id);
+    if (!Number.isInteger(attendanceId) || attendanceId <= 0) {
+      setFeedbackMessage("Unable to find today's attendance record. Please refresh and try again.");
+      return;
+    }
+
+    if (!hasSelectedTeamFeedback) {
+      setFeedbackMessage("Select at least one teammate to rate.");
+      return;
+    }
+    if (!hasValidTeamFeedbackRatings) {
+      setFeedbackMessage("Choose a rating from 1 to 5 for every selected teammate.");
+      return;
+    }
+
+    setFeedbackSubmitting(true);
+    setFeedbackMessage("");
+    try {
+      const response = await axios.post(
+        `${API_BASE}/team-feedback`,
+        { attendance_id: attendanceId, feedback: selectedTeamFeedback },
+        { headers: getAuthHeaders(), timeout: 10000 }
+      );
+      const successMessage = response.data?.message || "Feedback saved. Starting check out…";
+      setFeedbackMessage(successMessage);
+      setStatusMessage(successMessage);
+      checkoutStartingRef.current = true;
+      setCheckoutStarting(true);
+      setTeamRatingOpen(false);
+      setTeamRatings({});
+      setSharedTeamRating({ rating: 0, comment: "" });
+      setIsSharedTeamRating(false);
+      void handleCheckPunch("checkout").finally(() => {
+        checkoutStartingRef.current = false;
+        setCheckoutStarting(false);
+        setFeedbackSubmitting(false);
+      });
+    } catch (submitError) {
+      const message =
+        submitError.response?.data?.message ||
+        submitError.response?.data?.error ||
+        "Unable to submit feedback. Please try again or check out without feedback.";
+      setFeedbackMessage(message);
+      setFeedbackSubmitting(false);
+    }
+  };
+
   useEffect(() => () => cleanupCamera(), []);
 
   const submitLeave = async () => {
@@ -1027,9 +1272,9 @@ useEffect(() => {
                 className="punch-btn checkout"
                 onClick={() => {
                   console.log("Button clicked:", "checkout");
-                  handleCheckPunch("checkout");
+                  openTeamRating();
                 }}
-                disabled={checkOutDisabled}
+                disabled={checkOutDisabled || checkoutStarting}
               >
                 <span className="punch-btn-icon">
                   <LogOut size={20} />
@@ -1401,6 +1646,146 @@ useEffect(() => {
             </div>,
             modalRoot
           )} 
+
+        {teamRatingOpen && modalRoot &&
+          createPortal(
+            <div className="team-rating-modal" role="presentation">
+              <div
+                className="team-rating-dialog"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="team-rating-heading"
+              >
+                <div className="team-rating-head">
+                  <div>
+                    <p className="section-kicker">End of day feedback</p>
+                    <h3 id="team-rating-heading">Rate Your Team</h3>
+                    <p className="team-rating-subtitle">Choose teammates and share feedback for your workday.</p>
+                  </div>
+                </div>
+
+                <div className="team-rating-content">
+                  {feedbackMessage || (!teamMembersLoading && !teamMembersError && feedbackReadinessMessage) ? (
+                    <p className="team-rating-notice" role="status">
+                      {feedbackMessage || feedbackReadinessMessage}
+                    </p>
+                  ) : null}
+
+                  {teamMembersLoading ? (
+                    <p className="team-rating-state">Loading your team…</p>
+                  ) : teamMembersError ? (
+                    <p className="team-rating-state error">{teamMembersError}</p>
+                  ) : teamMembers.length === 0 ? (
+                    <p className="team-rating-state">No team members are available to rate.</p>
+                  ) : (
+                    <>
+                    <label className="team-select-all">
+                      <input
+                        ref={selectAllRef}
+                        type="checkbox"
+                        checked={isSharedTeamRating}
+                        onChange={toggleAllRatedEmployees}
+                      />
+                      <span>Select All <small>{allTeamMembersSelected && !isSharedTeamRating ? "(individual ratings)" : ""}</small></span>
+                    </label>
+
+                    {isSharedTeamRating && (
+                      <div className="team-shared-feedback">
+                        <span>Rate everyone</span>
+                        <div className="team-star-row" role="group" aria-label="Shared rating for all selected team members">
+                          {[1, 2, 3, 4, 5].map((rating) => (
+                            <button
+                              key={rating}
+                              type="button"
+                              className={rating <= sharedTeamRating.rating ? "active" : ""}
+                              onClick={() => updateSharedTeamRating("rating", rating)}
+                              aria-label={`${rating} star${rating === 1 ? "" : "s"} for all selected employees`}
+                            >
+                              <Star size={23} fill="currentColor" />
+                            </button>
+                          ))}
+                        </div>
+                        <textarea
+                          value={sharedTeamRating.comment}
+                          onChange={(event) => updateSharedTeamRating("comment", event.target.value)}
+                          placeholder="Optional comment for everyone"
+                          aria-label="Optional comment for all selected employees"
+                        />
+                      </div>
+                    )}
+
+                    <div className={`team-rating-list ${isSharedTeamRating ? "shared-mode" : ""}`}>
+                      {teamMembers.map((member) => {
+                        const feedback = teamRatings[member.id];
+                        return (
+                          <article className="team-rating-member" key={member.id}>
+                            <label className="team-member-toggle">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(feedback)}
+                                onChange={() => toggleRatedEmployee(member.id)}
+                              />
+                              <span>{member.name}</span>
+                            </label>
+
+                            {!isSharedTeamRating && feedback && (
+                              <div className="team-member-feedback">
+                                <div className="team-star-row" role="group" aria-label={`Rating for ${member.name}`}>
+                                  {[1, 2, 3, 4, 5].map((rating) => (
+                                    <button
+                                      key={rating}
+                                      type="button"
+                                      className={rating <= feedback.rating ? "active" : ""}
+                                      onClick={() => updateTeamRating(member.id, "rating", rating)}
+                                      aria-label={`${rating} star${rating === 1 ? "" : "s"}`}
+                                    >
+                                      <Star size={21} fill="currentColor" />
+                                    </button>
+                                  ))}
+                                </div>
+                                <textarea
+                                  value={feedback.comment}
+                                  onChange={(event) =>
+                                    updateTeamRating(member.id, "comment", event.target.value)
+                                  }
+                                  placeholder="Optional comment"
+                                  aria-label={`Optional comment for ${member.name}`}
+                                />
+                              </div>
+                            )}
+                          </article>
+                        );
+                      })}
+                    </div>
+                    </>
+                  )}
+                </div>
+
+                <div className="team-rating-actions">
+                  <button type="button" className="team-rating-cancel" onClick={closeTeamRating}>
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="team-rating-submit"
+                    onClick={submitTeamFeedback}
+                    disabled={!canSubmitTeamFeedback}
+                  >
+                    {feedbackSubmitting ? "Submitting…" : "Submit Feedback"}
+                  </button>
+                  <button
+                    type="button"
+                    className="team-rating-checkout"
+                    onClick={continueCheckoutWithoutFeedback}
+                    disabled={teamMembersLoading || checkoutStarting || feedbackSubmitting}
+                  >
+                    {checkoutStarting ? "Starting check out…" : "Check out without feedback"}
+                  </button>
+                </div>
+              </div>
+            </div>,
+            modalRoot
+          )}
       </div>
 
       {savingOverlay && (
